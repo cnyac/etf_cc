@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>etf_cc 控制台</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style>
+@font-face{font-family:'STZhongsong';src:url('/static/fonts/STZHONGS.TTF') format('truetype');font-display:swap}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'STZhongsong','华文中宋','Times New Roman',Times,serif;background:#fcf9f6;color:#1c1c1a;min-height:100vh}
+.font-num{font-family:'Times New Roman',Times,serif}
+.font-code{font-family:'Cascadia Code','Consolas','JetBrains Mono','Courier New',monospace}
+:root{
+  --primary:#8f482f;--primary-container:#ad5f45;--on-primary-container:#fffbff;
+  --surface:#fcf9f6;--surface-container:#f0edeb;--surface-container-low:#f6f3f1;
+  --on-surface:#1c1c1a;--on-surface-variant:#54433e;
+  --outline-variant:#dac1ba;--error:#ba1a1a;
+  --inverse-surface:#31302f;--inverse-on-surface:#f3f0ee;
+  --primary-fixed-dim:#ffb59d;
+  /* etf_cc 报告专用色（仅文本/数字染色用，UI 壳子不用） */
+  --report-up:#FF0000;--report-down:#00008B;
+}
+.btn{padding:8px 20px;border-radius:6px;border:none;font-size:14px;cursor:pointer;transition:all .2s;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover:not(:disabled){background:#75331c}
+.btn-outline{background:transparent;border:1px solid var(--outline-variant);color:var(--on-surface)}
+.btn-outline:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
+.btn-danger{background:#ef4444;color:#fff}
+.btn-danger:hover:not(:disabled){background:#dc2626}
+.btn-sm{padding:4px 12px;font-size:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+input[type=text],input[type=number],input[type=date],select,textarea{
+  padding:8px 12px;border:1px solid var(--outline-variant);border-radius:6px;
+  font-size:14px;outline:none;font-family:inherit;background:#fff
+}
+input:focus,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(143,72,47,.1)}
+.spinner{width:16px;height:16px;border:2px solid var(--outline-variant);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.tab-btn{padding:8px 16px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--on-surface-variant);cursor:pointer;font-size:14px;font-family:inherit;transition:all .15s}
+.tab-btn.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.tab-btn:hover:not(.active){color:var(--on-surface)}
+.panel{display:none}
+.panel.active{display:block}
+.card{background:var(--surface-container);border:1px solid var(--outline-variant);border-radius:12px;padding:24px;margin-bottom:16px}
+.card-low{background:var(--surface-container-low)}
+.card h3{font-size:16px;font-weight:600;margin-bottom:12px;color:var(--on-surface)}
+.card .help{font-size:12px;color:var(--on-surface-variant);margin-bottom:12px}
+
+.field-row{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.field-row label{font-size:13px;color:var(--on-surface-variant);min-width:80px}
+
+.market-seg{display:inline-flex;gap:2px;background:var(--surface-container-low);border-radius:8px;padding:3px}
+.market-seg button{padding:6px 16px;border:none;border-radius:6px;background:transparent;color:var(--on-surface-variant);cursor:pointer;font-size:13px;font-family:inherit;transition:all .15s}
+.market-seg button.active{background:var(--primary-container);color:var(--on-primary-container);font-weight:600}
+
+/* 日志视图 — 终端风格 */
+.log-viewer{background:#181715;color:#cbc6bb;border-radius:8px;padding:14px;max-height:360px;overflow-y:auto;font-family:'Cascadia Code','Consolas',monospace;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-all}
+.log-viewer .log-err{color:#ff7e7e}
+.log-viewer .log-warn{color:#7eb3ff}  /* 用户色盲：深蓝替代橙黄 */
+.log-viewer .log-ok{color:#92e09d}    /* OK 也避免纯绿，用稍浅暖绿 */
+.log-viewer .log-line{display:block}
+
+/* 状态栏 */
+.statusbar{background:var(--surface-container-low);border-bottom:1px solid var(--outline-variant);padding:10px 24px;display:flex;gap:24px;align-items:center;flex-wrap:wrap;font-size:13px}
+.statusbar .item{display:flex;align-items:center;gap:6px}
+.statusbar .item .label{color:var(--on-surface-variant)}
+.statusbar .item .val{color:var(--on-surface);font-weight:600}
+.statusbar .item .val.warn{color:var(--error)}
+.statusbar .item .val.code{font-family:'Times New Roman',Times,serif}
+
+/* 拖拽区 */
+.drop-zone{border:2px dashed var(--outline-variant);border-radius:12px;padding:48px 24px;text-align:center;color:var(--on-surface-variant);transition:all .2s;background:var(--surface-container-low)}
+.drop-zone.dragover{border-color:var(--primary);background:#fff;color:var(--primary)}
+
+/* 表格 */
+table.data-table{width:100%;border-collapse:collapse;font-size:13px}
+table.data-table th,table.data-table td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--outline-variant)}
+table.data-table th{background:var(--surface-container-low);font-weight:600;color:var(--on-surface-variant);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+table.data-table tr:hover td{background:var(--surface-container-low)}
+
+/* Toast */
+#toast-container{position:fixed;top:80px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px;max-width:420px}
+.toast{padding:10px 16px;border-radius:8px;font-size:14px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:toastIn .25s ease;cursor:default}
+.toast.success{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+.toast.error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+.toast.info{background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe}
+.toast.warning{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.toast .close{background:none;border:none;cursor:pointer;font-size:16px;opacity:.6;margin-left:auto;color:inherit}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+
+/* 编辑区 */
+textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13px;line-height:1.5;width:100%;min-height:200px;padding:12px;resize:vertical}
+.errors-list{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-top:12px;color:#991b1b;font-size:13px}
+.errors-list .err{padding:4px 0;border-bottom:1px dashed #fecaca}
+.errors-list .err:last-child{border-bottom:none}
+
+/* 系统调参子面板 */
+.subtab-nav{display:flex;gap:0;border-bottom:1px solid var(--outline-variant);margin-bottom:24px}
+.subtab-btn{padding:10px 20px;border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:14px;color:var(--on-surface-variant);border-bottom:2px solid transparent;transition:all .15s}
+.subtab-btn.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.subpanel{display:none}
+.subpanel.active{display:block}
+
+.zone-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-left:8px}
+.zone-green{background:#dcfce7;color:#166534}
+.zone-yellow{background:#fef3c7;color:#92400e}
+.zone-orange{background:#fed7aa;color:#9a3412}
+</style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<!-- TopNav -->
+<nav class="bg-white border-b" style="border-color:var(--outline-variant)">
+  <div class="px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-6">
+      <span class="text-xl font-bold" style="color:var(--primary);font-family:'STZhongsong','华文中宋',serif">etf_cc 控制台</span>
+      <div class="flex gap-1">
+        <button class="tab-btn active" data-tab="data-update">① 数据更新</button>
+        <button class="tab-btn" data-tab="gen-prompt">② 生成 Prompt</button>
+        <button class="tab-btn" data-tab="fill-narrative">③ 填回 Narrative</button>
+        <button class="tab-btn" data-tab="render">④ 渲染报告</button>
+        <button class="tab-btn" data-tab="sync">⑤ 同步批注</button>
+        <button class="tab-btn" data-tab="inbox">⑥ 批注收件</button>
+        <button class="tab-btn" data-tab="pool">⑦ 池配置</button>
+        <button class="tab-btn" data-tab="system">⑧ 系统调参</button>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <button class="btn btn-outline btn-sm" onclick="refreshStatus()" title="手动刷新状态栏">🔄 刷新</button>
+      <button class="btn btn-outline btn-sm" onclick="toggleLogger()" title="日志/错误面板">📋 日志</button>
+    </div>
+  </div>
+  <!-- 状态栏 -->
+  <div class="statusbar" id="statusbar">
+    <div class="item"><span class="label">A 股窗口</span>
+      <span class="val" id="status-a-count">—</span>
+      <span style="color:var(--on-surface-variant)">/ 最新</span>
+      <span class="val code" id="status-a-latest">—</span>
+      <span style="color:var(--on-surface-variant)">/ 缺口</span>
+      <span class="val" id="status-a-gap">—</span>
+    </div>
+    <div class="item"><span class="label">美股窗口</span>
+      <span class="val" id="status-us-count">—</span>
+      <span style="color:var(--on-surface-variant)">/ 最新</span>
+      <span class="val code" id="status-us-latest">—</span>
+      <span style="color:var(--on-surface-variant)">/ 缺口</span>
+      <span class="val" id="status-us-gap">—</span>
+    </div>
+    <div class="item" style="margin-left:auto">
+      <span class="label">上次更新</span>
+      <span class="val code" id="status-last-update">—</span>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+
+<!-- ───────── ① 数据更新 ───────── -->
+<section class="panel active" id="panel-data-update">
+  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">数据更新</h1>
+  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
+    一键调用 <code class="font-code text-xs">update_all</code>：补底层切片 → 扫报告缺口 → 逐 label 跑 build_snapshot → 落汇总日志。
+    只做到 snapshot 落地；narrative 由后续 tab 跑 LLM 填。
+  </p>
+
+  <div class="card">
+    <div class="field-row">
+      <label>市场</label>
+      <div class="market-seg" id="ua-markets">
+        <button class="active" data-market="A">A 股</button>
+        <button data-market="US">美股</button>
+        <button data-market="BOTH">A+US</button>
+      </div>
+    </div>
+    <div class="field-row">
+      <label>回看天数</label>
+      <input type="number" id="ua-lookback" value="7" min="1" max="60" style="width:80px">
+      <span class="text-xs" style="color:var(--on-surface-variant)">从今日往前找缺口的天数</span>
+    </div>
+    <div class="field-row">
+      <label>跳过补齐</label>
+      <input type="checkbox" id="ua-skip">
+      <span class="text-xs" style="color:var(--on-surface-variant)">勾选后跳过 auto-prtsc 底层切片（已在别处补过时用）</span>
+    </div>
+    <div class="field-row">
+      <button class="btn btn-primary" id="ua-run-btn" onclick="runUpdateAll()">▶ 开始</button>
+      <span id="ua-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>实时执行日志</h3>
+    <div class="log-viewer" id="ua-log"><span class="log-line" style="color:#666">（等待开始）</span></div>
+  </div>
+</section>
+
+<!-- ───────── ② 生成 Prompt ───────── -->
+<section class="panel" id="panel-gen-prompt">
+  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">生成 Prompt</h1>
+  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
+    选择市场和已生成 snapshot 的 label，产出完整提示词。复制到 Claude / ChatGPT 跑，拿回 JSON 到 ③ 填回。
+  </p>
+
+  <div class="card">
+    <div class="field-row">
+      <label>市场</label>
+      <div class="market-seg" id="gp-markets">
+        <button class="active" data-market="A">A 股</button>
+        <button data-market="US">美股</button>
+      </div>
+    </div>
+    <div class="field-row">
+      <label>Label</label>
+      <select id="gp-label" style="min-width:240px"></select>
+      <button class="btn btn-outline btn-sm" onclick="reloadLabels('gp')">↻</button>
+    </div>
+    <div class="field-row">
+      <button class="btn btn-primary" onclick="genPrompt()">✎ 生成</button>
+      <button class="btn btn-outline" onclick="copyPrompt()">📋 复制 prompt</button>
+      <span id="gp-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Prompt 内容</h3>
+    <textarea id="gp-output" class="code-area" style="min-height:400px" placeholder="点'生成'后显示在这里" readonly></textarea>
+  </div>
+</section>
+
+<!-- ───────── ③ 填回 Narrative ───────── -->
+<section class="panel" id="panel-fill-narrative">
+  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">填回 Narrative</h1>
+  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
+    把 LLM 返回的 JSON 粘到下方 → 校验通过即写回窗口；失败列出错误，修后重粘再校验。
+  </p>
+
+  <div class="card">
+    <div class="field-row">
+      <label>市场</label>
+      <div class="market-seg" id="fn-markets">
+        <button class="active" data-market="A">A 股</button>
+        <button data-market="US">美股</button>
+      </div>
+    </div>
+    <div class="field-row">
+      <label>Label</label>
+      <select id="fn-label" style="min-width:240px"></select>
+      <button class="btn btn-outline btn-sm" onclick="reloadLabels('fn')">↻</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Narrative JSON</h3>
+    <textarea id="fn-input" class="code-area" style="min-height:300px" placeholder='粘贴 LLM 返回的 JSON：{"is_skeleton": false, "session_summary": "...", ...}'></textarea>
+    <div class="field-row mt-3">
+      <button class="btn btn-primary" onclick="fillNarrative()">✓ 校验 + 回填</button>
+      <span id="fn-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
+    </div>
+    <div id="fn-errors"></div>
+  </div>
+</section>
+
+<!-- ───────── ④ 渲染报告 ───────── -->
+<section class="panel" id="panel-render">
+  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">渲染报告</h1>
+  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
+    把已填 narrative 的 session 渲染成 HTML（单文件自包含，可直接发给 B）。
+  </p>
+
+  <div class="card">
+    <div class="field-row">
+      <label>市场</label>
+      <div class="market-seg" id="rd-markets">
+        <button class="active" data-market="A">A 股</button>
+        <button data-market="US">美股</button>
+      </div>
+    </div>
+    <div class="field-row">
+      <label>Label</label>
+      <select id="rd-label" style="min-width:240px"></select>
+      <button class="btn btn-outline btn-sm" onclick="reloadLabels('rd')">↻</button>
+    </div>
+    <div class="field-row">
+      <button class="btn btn-primary" onclick="renderHtml()">🖼 渲染</button>
+      <button class="btn btn-outline" id="rd-open-btn" onclick="openReportNewTab()" disabled>↗ 新窗口打开</button>
+      <span id="rd-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>预览（iframe；批注交互请在'新窗口'里做）</h3>
+    <iframe id="rd-preview" style="width:100%;height:640px;border:1px solid var(--outline-variant);border-radius:8px;background:#fff"></iframe>
+  </div>
+</section>
+
+<!-- ───────── ⑤ 同步批注 ───────── -->
+<section class="panel" id="panel-sync">
+  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">同步批注</h1>
+  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
+    把 B 发回的 HTML 文件拖到下方区域 → 自动覆盖 <code class="font-code text-xs">data/reports/&lt;m&gt;/&lt;label&gt;.html</code> → 立即解析批注写回窗口。
+  </p>
+
+  <div class="card">
+    <div class="field-row">
+      <label>市场</label>
+      <div class="market-seg" id="sy-markets">
+        <button class="active" data-market="A">A 股</button>
+        <button data-market="US">美股</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="drop-zone" id="sy-drop">
+      <div style="font-size:36px;margin-bottom:8px">📥</div>
+      <div style="font-size:15px">拖拽 HTML 文件到此处</div>
+      <div class="text-xs mt-2" style="color:var(--on-surface-variant)">或 <a href="#" onclick="document.getElementById('sy-file').click();return false" style="color:var(--primary);text-decoration:underline">点击选择文件</a></div>
+      <input type="file" id="sy-file" accept=".html" style="display:none" multiple>
+    </div>
+    <div id="sy-result" class="mt-4"></div>
+  </div>
+
+  <div class="card">
+    <h3>手动触发（不上传，只重扫现有 reports/ 目录）</h3>
+    <div class="field-row">
+      <button class="btn btn-outline" onclick="syncOnly()">↻ 重扫同步</button>
+      <span class="text-xs" style="color:var(--on-surface-variant)">用于 B 已通过其他方式覆盖了文件的情况</span>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── ⑥ 批注收件 ───────── -->
+<section class="panel" id="panel-inbox">
+  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">批注收件</h1>
+  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
+    列出 <code class="font-code text-xs">data/reports/</code> 所有 HTML，对比 last_synced.json 标出"待同步"。
+  </p>
+
+  <div class="card">
+    <div class="field-row">
+      <label>市场</label>
+      <div class="market-seg" id="ib-markets">
+        <button class="active" data-market="A">A 股</button>
+        <button data-market="US">美股</button>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="loadInbox()">↻ 刷新</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>报告</th><th>修改时间</th><th>上次同步</th><th>状态</th><th></th></tr></thead>
+      <tbody id="ib-body"><tr><td colspan="5" style="text-align:center;color:var(--on-surface-variant)">（等待加载）</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ───────── ⑦ 池配置 ───────── -->
+<section class="panel" id="panel-pool">
+  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">池配置</h1>
+  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
+    编辑 <code class="font-code text-xs">config/pool_a.yaml / pool_us.yaml</code>。
+    <strong style="color:var(--error)">role 字段下拉锁定 enum</strong>（乱填会让 panel.cross_asset_state 算错）。
+  </p>
+
+  <div class="card">
+    <div class="field-row">
+      <label>市场</label>
+      <div class="market-seg" id="pl-markets">
+        <button class="active" data-market="A">A 股</button>
+        <button data-market="US">美股</button>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="loadPool()">↻ 重读</button>
+      <button class="btn btn-primary btn-sm" onclick="savePool()">💾 保存</button>
+      <button class="btn btn-outline btn-sm" onclick="addPoolRow()">+ 增行</button>
+      <span id="pl-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <table class="data-table" id="pl-table">
+      <thead><tr><th style="width:160px">代码</th><th>名称</th><th style="width:140px">分类</th><th style="width:160px">Role</th><th style="width:60px"></th></tr></thead>
+      <tbody id="pl-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ───────── ⑧ 系统调参 ───────── -->
+<section class="panel" id="panel-system">
+  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">系统调参</h1>
+  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
+    三级风险分区：
+    <span class="zone-tag zone-green">绿区</span>人格设定 自由改；
+    <span class="zone-tag zone-yellow">黄区</span>量化阈值 谨慎改；
+    <span class="zone-tag zone-orange">橙区</span>LLM 模板 需懂 schema。
+    因子公式 / classify 边界 / prompt 组装逻辑属于地基，<strong>不暴露</strong>到 GUI（CLAUDE.md 禁区）。
+  </p>
+
+  <div class="subtab-nav">
+    <button class="subtab-btn active" data-sub="personas">人格设定<span class="zone-tag zone-green">绿</span></button>
+    <button class="subtab-btn" data-sub="thresholds">量化阈值<span class="zone-tag zone-yellow">黄</span></button>
+    <button class="subtab-btn" data-sub="templates">LLM 模板<span class="zone-tag zone-orange">橙</span></button>
+  </div>
+
+  <!-- 子面板 1：人格 -->
+  <div class="subpanel active" id="sub-personas">
+    <div class="card">
+      <div class="field-row">
+        <button class="btn btn-primary btn-sm" onclick="savePersonas()">💾 保存</button>
+        <span id="ps-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
+      </div>
+      <div id="ps-body"></div>
+    </div>
+  </div>
+
+  <!-- 子面板 2：阈值 -->
+  <div class="subpanel" id="sub-thresholds">
+    <div class="card">
+      <div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px">
+        ⚠ 阈值改动只影响下次 <code class="font-code">build_snapshot</code>。已存在窗口数据不会重算，跨日比较可能失去可比性。
+      </div>
+      <table class="data-table" id="th-table">
+        <thead><tr><th>键</th><th>默认</th><th>当前</th><th>作用域</th><th>说明</th></tr></thead>
+        <tbody id="th-body"></tbody>
+      </table>
+      <div class="field-row mt-4">
+        <button class="btn btn-primary btn-sm" onclick="saveThresholds()">💾 保存</button>
+        <button class="btn btn-outline btn-sm" onclick="loadThresholds()">↻ 重读</button>
+        <span id="th-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 子面板 3：LLM 模板 -->
+  <div class="subpanel" id="sub-templates">
+    <div class="card">
+      <div class="field-row">
+        <label>模板段</label>
+        <select id="tp-key" style="min-width:240px" onchange="loadTemplate()"></select>
+        <button class="btn btn-outline btn-sm" onclick="loadTemplate()">↻ 重读</button>
+        <button class="btn btn-primary btn-sm" onclick="saveTemplate()">💾 保存</button>
+        <button class="btn btn-danger btn-sm" onclick="resetTemplate()">⟲ 恢复默认</button>
+        <span id="tp-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
+      </div>
+      <textarea id="tp-content" class="code-area" style="min-height:400px" placeholder="（选模板段后显示）"></textarea>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- 浮动日志/错误面板 -->
+<div id="logger-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;height:50vh;background:#fff;border-top:2px solid var(--primary);box-shadow:0 -4px 12px rgba(0,0,0,.1);z-index:90;overflow:hidden">
+  <div style="padding:8px 16px;background:var(--surface-container);border-bottom:1px solid var(--outline-variant);display:flex;align-items:center;gap:12px">
+    <strong style="font-size:14px">📋 日志 / 错误</strong>
+    <button class="tab-btn active" id="lg-tab-logs" onclick="switchLogger('logs')">数据更新日志</button>
+    <button class="tab-btn" id="lg-tab-errors" onclick="switchLogger('errors')">错误明细</button>
+    <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="toggleLogger()">关闭</button>
+  </div>
+  <div style="display:flex;height:calc(50vh - 41px)">
+    <div style="width:340px;border-right:1px solid var(--outline-variant);overflow-y:auto" id="lg-list"></div>
+    <div style="flex:1;padding:12px;overflow:auto">
+      <div class="field-row" style="margin-bottom:8px">
+        <span id="lg-filename" class="font-code text-xs" style="color:var(--on-surface-variant)">（选左侧文件）</span>
+        <button class="btn btn-outline btn-sm" onclick="copyLogContent()">📋 复制内容</button>
+      </div>
+      <pre id="lg-content" class="font-code" style="font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-all;background:#181715;color:#cbc6bb;padding:14px;border-radius:8px;min-height:calc(100% - 44px)">（无）</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ 通用工具 ============
+const $ = (id) => document.getElementById(id);
+const api = async (url, opts={}) => {
+  opts.headers = Object.assign({"Content-Type":"application/json"}, opts.headers || {});
+  if (opts.body && typeof opts.body !== "string") opts.body = JSON.stringify(opts.body);
+  const r = await fetch(url, opts);
+  const ct = r.headers.get("content-type") || "";
+  const data = ct.includes("application/json") ? await r.json() : await r.text();
+  if (!r.ok) {
+    const msg = typeof data === "object" ? (data.error || JSON.stringify(data)) : data;
+    throw new Error(`${r.status}: ${msg}`);
+  }
+  return data;
+};
+
+function toast(msg, level="info", ttl=3000) {
+  const t = document.createElement("div");
+  t.className = `toast ${level}`;
+  t.innerHTML = `<span>${msg}</span><button class="close" onclick="this.parentElement.remove()">×</button>`;
+  $("toast-container").appendChild(t);
+  if (ttl) setTimeout(() => t.remove(), ttl);
+}
+
+// ============ Tab 切换 ============
+document.querySelectorAll(".tab-btn[data-tab]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    $(`panel-${btn.dataset.tab}`).classList.add("active");
+    onTabActivate(btn.dataset.tab);
+  });
+});
+
+function onTabActivate(tab) {
+  if (tab === "gen-prompt") reloadLabels("gp");
+  if (tab === "fill-narrative") reloadLabels("fn");
+  if (tab === "render") reloadLabels("rd");
+  if (tab === "inbox") loadInbox();
+  if (tab === "pool") loadPool();
+  if (tab === "system") {
+    // 默认子面板：人格
+    loadPersonas(); loadThresholds(); loadTemplateList();
+  }
+}
+
+// market-seg 通用绑定
+function bindMarketSeg(id, onChange) {
+  document.querySelectorAll(`#${id} button`).forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(`#${id} button`).forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      if (onChange) onChange(b.dataset.market);
+    });
+  });
+}
+function getMarket(id) {
+  return document.querySelector(`#${id} button.active`).dataset.market;
+}
+
+bindMarketSeg("ua-markets");
+bindMarketSeg("gp-markets", () => reloadLabels("gp"));
+bindMarketSeg("fn-markets", () => reloadLabels("fn"));
+bindMarketSeg("rd-markets", () => reloadLabels("rd"));
+bindMarketSeg("sy-markets");
+bindMarketSeg("ib-markets", () => loadInbox());
+bindMarketSeg("pl-markets", () => loadPool());
+
+// subtab 切换
+document.querySelectorAll(".subtab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".subtab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".subpanel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    $(`sub-${btn.dataset.sub}`).classList.add("active");
+  });
+});
+
+// ============ 状态栏 ============
+async function refreshStatus() {
+  try {
+    const s = await api("/api/status");
+    $("status-a-count").textContent = `${s.A.session_count}/${s.A.max_sessions}`;
+    $("status-a-latest").textContent = s.A.latest_label || "(空)";
+    $("status-a-gap").textContent = s.A.gap_count;
+    $("status-a-gap").className = "val" + (s.A.gap_count > 0 ? " warn" : "");
+    $("status-us-count").textContent = `${s.US.session_count}/${s.US.max_sessions}`;
+    $("status-us-latest").textContent = s.US.latest_label || "(空)";
+    $("status-us-gap").textContent = s.US.gap_count;
+    $("status-us-gap").className = "val" + (s.US.gap_count > 0 ? " warn" : "");
+    $("status-last-update").textContent = s.last_update ? s.last_update.mtime : "(无)";
+  } catch (e) {
+    toast(`状态加载失败: ${e.message}`, "error");
+  }
+}
+refreshStatus();
+
+// ============ Tab 1: 数据更新 ============
+let _uaPollTimer = null;
+let _uaSince = 0;
+
+async function runUpdateAll() {
+  const m = getMarket("ua-markets");
+  const markets = m === "BOTH" ? ["A","US"] : [m];
+  const lookback = parseInt($("ua-lookback").value || "7");
+  const skip = $("ua-skip").checked;
+  $("ua-log").innerHTML = `<span class="log-line" style="color:#aaa">[启动] markets=${markets.join(",")} lookback=${lookback} skip_refresh=${skip}</span>`;
+  _uaSince = 0;
+  $("ua-run-btn").disabled = true;
+  $("ua-status").innerHTML = '<span class="spinner"></span> 运行中…';
+  try {
+    const r = await api("/api/update_all", {method:"POST", body:{markets, lookback, skip_refresh:skip}});
+    pollTask(r.task_id, "ua");
+  } catch (e) {
+    toast(`启动失败: ${e.message}`, "error");
+    $("ua-run-btn").disabled = false;
+    $("ua-status").textContent = "";
+  }
+}
+
+function colorizeLine(line) {
+  if (/\bERROR\b|失败|抛错|FAIL|Error|Exception|Traceback/i.test(line)) return `<span class="log-line log-err">${escapeHtml(line)}</span>`;
+  if (/\bWARN\b|警告|跳过/i.test(line)) return `<span class="log-line log-warn">${escapeHtml(line)}</span>`;
+  if (/\bOK\b|成功|完成/i.test(line)) return `<span class="log-line log-ok">${escapeHtml(line)}</span>`;
+  return `<span class="log-line">${escapeHtml(line)}</span>`;
+}
+function escapeHtml(s){return String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"})[c]);}
+
+function pollTask(taskId, prefix) {
+  const logEl = $(`${prefix}-log`);
+  const statusEl = $(`${prefix}-status`);
+  const btn = $(`${prefix}-run-btn`);
+  async function tick() {
+    try {
+      const st = await api(`/api/task/${taskId}?since=${_uaSince}`);
+      _uaSince = st.log_total;
+      if (st.log.length) {
+        st.log.forEach(line => {
+          logEl.insertAdjacentHTML("beforeend", colorizeLine(line));
+        });
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+      if (st.status === "done") {
+        statusEl.textContent = "✓ 完成";
+        if (btn) btn.disabled = false;
+        refreshStatus();
+        toast("update_all 完成", "success");
+        return;
+      }
+      if (st.status === "error") {
+        statusEl.textContent = "✗ 失败";
+        if (btn) btn.disabled = false;
+        toast(`任务失败: ${st.error}`, "error", 8000);
+        return;
+      }
+      _uaPollTimer = setTimeout(tick, 800);
+    } catch (e) {
+      statusEl.textContent = "✗ 轮询失败";
+      if (btn) btn.disabled = false;
+      toast(e.message, "error");
+    }
+  }
+  tick();
+}
+
+// ============ Tab 2-4 共用：label 下拉 ============
+async function reloadLabels(prefix) {
+  const m = getMarket(`${prefix}-markets`);
+  try {
+    const r = await api(`/api/labels/${m}`);
+    const sel = $(`${prefix}-label`);
+    sel.innerHTML = "";
+    r.labels.slice().reverse().forEach(l => {
+      const opt = document.createElement("option");
+      opt.value = l; opt.textContent = l;
+      sel.appendChild(opt);
+    });
+    if (!r.labels.length) {
+      const opt = document.createElement("option");
+      opt.value = ""; opt.textContent = "(窗口为空)";
+      sel.appendChild(opt);
+    }
+  } catch (e) {
+    toast(`加载 ${m} label 失败: ${e.message}`, "error");
+  }
+}
+
+// ============ Tab 2: 生成 Prompt ============
+async function genPrompt() {
+  const market = getMarket("gp-markets");
+  const label = $("gp-label").value;
+  if (!label) { toast("无可选 label", "warning"); return; }
+  $("gp-status").innerHTML = '<span class="spinner"></span> 生成中…';
+  try {
+    const r = await api("/api/gen_prompt", {method:"POST", body:{market, label}});
+    $("gp-output").value = r.prompt;
+    $("gp-status").textContent = `✓ 已生成 (${r.length} 字符)`;
+  } catch (e) {
+    toast(e.message, "error");
+    $("gp-status").textContent = "";
+  }
+}
+function copyPrompt() {
+  const t = $("gp-output");
+  t.select(); document.execCommand("copy");
+  toast("已复制 prompt", "success", 1500);
+}
+
+// ============ Tab 3: 填回 Narrative ============
+async function fillNarrative() {
+  const market = getMarket("fn-markets");
+  const label = $("fn-label").value;
+  const narrative = $("fn-input").value.trim();
+  if (!label) { toast("无可选 label", "warning"); return; }
+  if (!narrative) { toast("请粘贴 narrative JSON", "warning"); return; }
+  $("fn-status").innerHTML = '<span class="spinner"></span> 校验中…';
+  $("fn-errors").innerHTML = "";
+  try {
+    const r = await api("/api/fill_narrative", {method:"POST", body:{market, label, narrative}});
+    $("fn-status").textContent = `✓ 已回填 ${market}/${label}`;
+    toast("校验通过 + 回填成功", "success");
+    refreshStatus();
+  } catch (e) {
+    // 422 错误 body 含 errors list
+    try {
+      const m = e.message.match(/^(\d+): (.+)$/);
+      if (m && m[1] === "422") {
+        const data = JSON.parse(m[2]);
+        showErrors(data.errors || []);
+        $("fn-status").textContent = `✗ ${data.errors.length} 个错误`;
+        return;
+      }
+    } catch {}
+    toast(e.message, "error");
+    $("fn-status").textContent = "";
+  }
+}
+function showErrors(errs) {
+  const html = '<div class="errors-list"><strong>校验失败：</strong>' +
+    errs.map(e => `<div class="err">• ${escapeHtml(e)}</div>`).join("") +
+    "</div>";
+  $("fn-errors").innerHTML = html;
+}
+
+// ============ Tab 4: 渲染报告 ============
+let _lastReportUrl = null;
+async function renderHtml() {
+  const market = getMarket("rd-markets");
+  const label = $("rd-label").value;
+  if (!label) { toast("无可选 label", "warning"); return; }
+  $("rd-status").innerHTML = '<span class="spinner"></span> 渲染中…';
+  try {
+    const r = await api("/api/render_html", {method:"POST", body:{market, label}});
+    _lastReportUrl = r.report_url;
+    $("rd-preview").src = r.report_url + "?_t=" + Date.now();
+    $("rd-open-btn").disabled = false;
+    $("rd-status").textContent = `✓ ${r.report_path}`;
+    toast("渲染完成", "success");
+  } catch (e) {
+    toast(e.message, "error");
+    $("rd-status").textContent = "";
+  }
+}
+function openReportNewTab() {
+  if (_lastReportUrl) window.open(_lastReportUrl, "_blank");
+}
+
+// ============ Tab 5: 同步批注（拖拽） ============
+(function setupDrop() {
+  const dz = $("sy-drop");
+  ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => {e.preventDefault(); dz.classList.add("dragover");}));
+  ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => {e.preventDefault(); dz.classList.remove("dragover");}));
+  dz.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+  $("sy-file").addEventListener("change", e => handleFiles(e.target.files));
+})();
+async function handleFiles(files) {
+  const market = getMarket("sy-markets");
+  const results = [];
+  for (const f of files) {
+    if (!f.name.toLowerCase().endsWith(".html")) {
+      results.push({file: f.name, error: "非 .html 文件"});
+      continue;
+    }
+    const fd = new FormData();
+    fd.append("market", market);
+    fd.append("file", f);
+    try {
+      const r = await fetch("/api/upload_report", {method:"POST", body:fd});
+      const data = await r.json();
+      if (!r.ok) { results.push({file: f.name, error: data.error || r.status}); continue; }
+      results.push({file: f.name, ...data});
+    } catch (e) {
+      results.push({file: f.name, error: e.message});
+    }
+  }
+  renderSyncResult(results);
+  refreshStatus();
+}
+async function syncOnly() {
+  const market = getMarket("sy-markets");
+  try {
+    const r = await api("/api/sync_annotations", {method:"POST", body:{market}});
+    renderSyncResult([{file:"(全量重扫)", sync: r}]);
+    toast(`同步 ${r.synced.length} / 归档 ${r.archived.length} / 跳过 ${r.skipped.length}`, "success");
+    refreshStatus();
+  } catch (e) { toast(e.message, "error"); }
+}
+function renderSyncResult(items) {
+  let html = '<table class="data-table"><thead><tr><th>文件</th><th>同步</th><th>归档</th><th>跳过</th><th>错误</th></tr></thead><tbody>';
+  items.forEach(it => {
+    const s = it.sync || {};
+    html += `<tr>
+      <td class="font-code">${escapeHtml(it.file)}</td>
+      <td>${(s.synced||[]).length}</td>
+      <td>${(s.archived||[]).length}</td>
+      <td>${(s.skipped||[]).length}</td>
+      <td style="color:#991b1b">${it.error || (s.errors||[]).length}</td>
+    </tr>`;
+  });
+  html += "</tbody></table>";
+  $("sy-result").innerHTML = html;
+}
+
+// ============ Tab 6: 批注收件 ============
+async function loadInbox() {
+  const m = getMarket("ib-markets");
+  try {
+    const r = await api(`/api/inbox/${m}`);
+    const body = $("ib-body");
+    if (!r.items.length) {
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--on-surface-variant)">（无报告）</td></tr>';
+      return;
+    }
+    body.innerHTML = r.items.map(it => `
+      <tr>
+        <td><a href="${it.url}" target="_blank" style="color:var(--primary)">${escapeHtml(it.label)}</a></td>
+        <td class="font-num">${it.mtime}</td>
+        <td class="font-num">${it.synced_at || "(未同步)"}</td>
+        <td>${it.pending ? '<span style="color:var(--error);font-weight:600">⚠ 待同步</span>' : '<span style="color:#166534">✓ 已同步</span>'}</td>
+        <td>${it.pending ? `<button class="btn btn-outline btn-sm" onclick="syncMarketBtn('${m}')">同步</button>` : ""}</td>
+      </tr>`).join("");
+  } catch (e) { toast(e.message, "error"); }
+}
+async function syncMarketBtn(m) {
+  try {
+    const r = await api("/api/sync_annotations", {method:"POST", body:{market:m}});
+    toast(`同步 ${r.synced.length} / 归档 ${r.archived.length}`, "success");
+    loadInbox(); refreshStatus();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ============ Tab 7: 池配置 ============
+const ROLE_OPTIONS = ["", "treasury_10y", "treasury_30y", "dollar", "gold", "oil", "vix", "btc", "eth"];
+
+async function loadPool() {
+  const m = getMarket("pl-markets");
+  try {
+    const r = await api(`/api/pool/${m}`);
+    const body = $("pl-body");
+    body.innerHTML = (r.etfs || []).map((e, i) => poolRowHtml(e, i)).join("");
+    $("pl-status").textContent = `加载 ${r.etfs ? r.etfs.length : 0} 条`;
+  } catch (e) { toast(e.message, "error"); }
+}
+function poolRowHtml(e, i) {
+  const roleOpts = ROLE_OPTIONS.map(r =>
+    `<option value="${r}" ${r === (e.role || "") ? "selected" : ""}>${r || "（无角色）"}</option>`
+  ).join("");
+  return `<tr>
+    <td><input type="text" data-k="code" value="${escapeHtml(e.code || "")}" style="width:100%"></td>
+    <td><input type="text" data-k="name" value="${escapeHtml(e.name || "")}" style="width:100%"></td>
+    <td><input type="text" data-k="category" value="${escapeHtml(e.category || "")}" style="width:100%"></td>
+    <td><select data-k="role" style="width:100%">${roleOpts}</select></td>
+    <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
+  </tr>`;
+}
+function addPoolRow() {
+  $("pl-body").insertAdjacentHTML("beforeend", poolRowHtml({code:"", name:"", category:"", role:""}, 0));
+}
+async function savePool() {
+  const m = getMarket("pl-markets");
+  const rows = document.querySelectorAll("#pl-body tr");
+  const etfs = [];
+  rows.forEach(tr => {
+    const obj = {};
+    tr.querySelectorAll("[data-k]").forEach(inp => {
+      const v = inp.value.trim();
+      if (v || inp.dataset.k === "role") obj[inp.dataset.k] = v;
+    });
+    if (obj.code) etfs.push(obj);
+  });
+  try {
+    const r = await api(`/api/pool/${m}`, {method:"POST", body:{etfs}});
+    toast(`保存 ${r.count} 条 ✓`, "success");
+    $("pl-status").textContent = `已保存 ${r.count} 条`;
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ============ Tab 8 Panel 1: 人格 ============
+let _personasCache = null;
+async function loadPersonas() {
+  try {
+    _personasCache = await api("/api/personas");
+    renderPersonas();
+  } catch (e) { toast(e.message, "error"); }
+}
+function renderPersonas() {
+  const body = $("ps-body");
+  let html = "";
+  ["A", "US"].forEach(mk => {
+    html += `<h3 style="margin-top:16px">${mk} 股市场</h3>`;
+    Object.entries(_personasCache[mk] || {}).forEach(([k, v]) => {
+      html += `
+        <div style="background:#fff;border:1px solid var(--outline-variant);border-radius:8px;padding:12px;margin-bottom:8px">
+          <div style="font-weight:600;font-size:14px;color:var(--primary);margin-bottom:8px">${escapeHtml(k)}</div>
+          <div class="field-row"><label style="min-width:80px">显示名</label>
+            <input type="text" value="${escapeHtml(v.display_name || "")}" data-mk="${mk}" data-pk="${k}" data-field="display_name" style="flex:1">
+          </div>
+          <div class="field-row"><label style="min-width:80px">作用范围</label>
+            <input type="text" value="${escapeHtml(v.scope || "")}" data-mk="${mk}" data-pk="${k}" data-field="scope" style="flex:1">
+          </div>
+          <div class="field-row"><label style="min-width:80px">关注维度</label>
+            <textarea data-mk="${mk}" data-pk="${k}" data-field="focus_block" style="flex:1;min-height:60px">${escapeHtml(v.focus_block || "")}</textarea>
+          </div>
+          <div class="text-xs" style="color:var(--on-surface-variant)">负责字段（只读）: ${(v.output_fields||[]).join(" / ")}</div>
+        </div>`;
+    });
+  });
+  body.innerHTML = html;
+}
+async function savePersonas() {
+  document.querySelectorAll("#ps-body [data-mk]").forEach(el => {
+    const {mk, pk, field} = el.dataset;
+    if (!_personasCache[mk][pk]) _personasCache[mk][pk] = {};
+    _personasCache[mk][pk][field] = el.value;
+  });
+  try {
+    await api("/api/personas", {method:"POST", body:_personasCache});
+    toast("人格设定已保存，下次 gen_prompt 立即生效", "success");
+    $("ps-status").textContent = "✓ 已保存";
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ============ Tab 8 Panel 2: 阈值 ============
+async function loadThresholds() {
+  try {
+    const r = await api("/api/thresholds");
+    const body = $("th-body");
+    body.innerHTML = r.items.map(it => `
+      <tr>
+        <td class="font-code">${escapeHtml(it.key)}</td>
+        <td class="font-num">${it.default}</td>
+        <td><input type="number" step="0.0001" value="${it.current}" data-key="${it.key}" style="width:120px"></td>
+        <td><span class="text-xs" style="color:var(--on-surface-variant)">${it.scope}</span></td>
+        <td class="text-xs">${escapeHtml(it.desc)}</td>
+      </tr>`).join("");
+  } catch (e) { toast(e.message, "error"); }
+}
+async function saveThresholds() {
+  const payload = {};
+  document.querySelectorAll("#th-body [data-key]").forEach(inp => {
+    payload[inp.dataset.key] = parseFloat(inp.value);
+  });
+  try {
+    const r = await api("/api/thresholds", {method:"POST", body:payload});
+    toast(r.warning || "阈值已保存", "warning", 6000);
+    $("th-status").textContent = "✓ 已保存";
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ============ Tab 8 Panel 3: LLM 模板 ============
+async function loadTemplateList() {
+  try {
+    const r = await api("/api/prompt_templates");
+    const sel = $("tp-key");
+    sel.innerHTML = r.items.map(it =>
+      `<option value="${it.key}">${it.key}${it.has_default ? "" : " (无默认)"}</option>`
+    ).join("");
+    if (r.items.length) loadTemplate();
+  } catch (e) { toast(e.message, "error"); }
+}
+async function loadTemplate() {
+  const key = $("tp-key").value;
+  if (!key) return;
+  try {
+    const r = await api(`/api/prompt_template/${key}`);
+    $("tp-content").value = r.content;
+    $("tp-status").textContent = r.is_default ? "（当前是默认值；保存后会覆盖）" : "（已自定义）";
+  } catch (e) {
+    if (/404/.test(e.message)) {
+      $("tp-content").value = "";
+      $("tp-status").textContent = "（暂无内容，模板段未实现）";
+    } else toast(e.message, "error");
+  }
+}
+async function saveTemplate() {
+  const key = $("tp-key").value;
+  const content = $("tp-content").value;
+  try {
+    await api(`/api/prompt_template/${key}`, {method:"POST", body:{content}});
+    toast(`${key} 已保存`, "success");
+    $("tp-status").textContent = "✓ 已保存（已自定义）";
+  } catch (e) { toast(e.message, "error"); }
+}
+async function resetTemplate() {
+  const key = $("tp-key").value;
+  if (!confirm(`恢复 ${key} 到默认？自定义内容会被删除。`)) return;
+  try {
+    await api(`/api/prompt_template/${key}/reset`, {method:"POST"});
+    toast(`${key} 已恢复默认`, "success");
+    loadTemplate();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ============ 日志/错误面板 ============
+let _loggerMode = "logs";
+function toggleLogger() {
+  const p = $("logger-panel");
+  p.style.display = (p.style.display === "none") ? "block" : "none";
+  if (p.style.display === "block") loadLoggerList();
+}
+function switchLogger(mode) {
+  _loggerMode = mode;
+  $("lg-tab-logs").classList.toggle("active", mode === "logs");
+  $("lg-tab-errors").classList.toggle("active", mode === "errors");
+  loadLoggerList();
+}
+async function loadLoggerList() {
+  const url = _loggerMode === "logs" ? "/api/logs" : "/api/errors";
+  try {
+    const r = await api(url);
+    const list = $("lg-list");
+    if (!r.items.length) {
+      list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--on-surface-variant)">（无）</div>';
+      return;
+    }
+    list.innerHTML = r.items.map(it => `
+      <div style="padding:8px 14px;border-bottom:1px solid var(--outline-variant);cursor:pointer" onclick="loadLoggerContent('${it.filename}')">
+        <div class="font-code" style="font-size:12px;color:var(--primary)">${escapeHtml(it.filename)}</div>
+        <div class="text-xs" style="color:var(--on-surface-variant)">${it.mtime} · ${it.size}B</div>
+      </div>`).join("");
+  } catch (e) { toast(e.message, "error"); }
+}
+async function loadLoggerContent(filename) {
+  const url = _loggerMode === "logs" ? `/api/logs/${filename}` : `/api/errors/${filename}`;
+  try {
+    const r = await api(url);
+    $("lg-filename").textContent = filename;
+    $("lg-content").textContent = r.content;
+  } catch (e) { toast(e.message, "error"); }
+}
+function copyLogContent() {
+  const t = $("lg-content").textContent;
+  if (!t) return;
+  navigator.clipboard.writeText(t).then(
+    () => toast("已复制内容（可贴给 AI 修 bug）", "success", 2000),
+    () => toast("复制失败", "error")
+  );
+}
+</script>
+</body>
+</html>

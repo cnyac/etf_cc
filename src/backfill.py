@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import Literal
+from typing import Callable, Literal
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -75,9 +75,10 @@ def skeleton_summary(session: dict) -> str:
 
 
 def backfill(market: Literal["A", "US"], start: str, end: str,
-             pool_path: str | None = None) -> dict:
+             pool_path: str | None = None,
+             log_cb: Callable[[str], None] = print) -> dict:
     days = _trading_days(start, end, market)
-    print(f"  交易日数: {len(days)}（{start} ~ {end}）")
+    log_cb(f"  交易日数: {len(days)}（{start} ~ {end}）")
 
     ok = fail = 0
     errors = []
@@ -85,7 +86,7 @@ def backfill(market: Literal["A", "US"], start: str, end: str,
         # A 股 backfill 用"收"；美股不带后缀
         label = f"{d}-收" if market == "A" else d
         try:
-            session = build(market, label, "close", pool_path)
+            session = build(market, label, "close", pool_path, log_cb=log_cb)
             # 用骨架 summary 替换 narrative
             session["narrative"] = {
                 "is_skeleton": True,
@@ -96,15 +97,15 @@ def backfill(market: Literal["A", "US"], start: str, end: str,
             win.archive_to_snapshot(market, session)
             win.append_session(market, session)
             ok += 1
-            print(f"  [{ok}/{len(days)}] {label} OK  (up={session['panel']['up_count']})")
+            log_cb(f"  [{ok}/{len(days)}] {label} OK  (up={session['panel']['up_count']})")
         except Exception as e:
             fail += 1
             errors.append({"label": label, "error": str(e)[:200]})
-            print(f"  [FAIL] {label}: {str(e)[:100]}")
+            log_cb(f"  [FAIL] {label}: {str(e)[:100]}")
 
     summary = {"ok": ok, "fail": fail, "errors": errors,
                "total": len(days), "market": market}
-    print(f"\n汇总: ok={ok} fail={fail}")
+    log_cb(f"\n汇总: ok={ok} fail={fail}")
     return summary
 
 
@@ -115,7 +116,7 @@ def main():
     p.add_argument("--end", required=True, help="YYYY-MM-DD")
     p.add_argument("--pool", default=None)
     args = p.parse_args()
-    backfill(args.market, args.start, args.end, args.pool)
+    backfill(args.market, args.start, args.end, pool_path=args.pool)
 
 
 if __name__ == "__main__":

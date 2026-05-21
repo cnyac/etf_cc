@@ -19,7 +19,7 @@ import argparse
 import datetime
 import os
 import sys
-from typing import Literal
+from typing import Callable, Literal
 
 import pandas as pd
 import yaml
@@ -74,7 +74,8 @@ def build(market: Literal["A", "US"], label: str,
           session_time: Literal["noon", "close"],
           pool_path: str | None = None,
           failures_out: list | None = None,
-          run_ts: str | None = None) -> dict:
+          run_ts: str | None = None,
+          log_cb: Callable[[str], None] = print) -> dict:
     """生产单时段 session dict，append 到窗口，归档到 snapshots/。返回 session dict。
 
     failures_out: 若传入 list，单只 ticker 失败时会 append 一条 dict
@@ -222,7 +223,7 @@ def build(market: Literal["A", "US"], label: str,
     win.archive_to_snapshot(market, session)
     popped = win.append_session(market, session)
     if popped:
-        print(f"  弹出最老 session: {popped}")
+        log_cb(f"  弹出最老 session: {popped}")
 
     return session
 

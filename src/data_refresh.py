@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Literal
+from typing import Callable, Literal
 
 import yaml
 
@@ -69,9 +69,13 @@ def refresh_pool(market: Literal["A", "US"],
     return (fail == 0), note
 
 
-def refresh_all(markets: list[Literal["A", "US"]]) -> dict[str, tuple[bool, str]]:
+def refresh_all(markets: list[Literal["A", "US"]],
+                log_cb: Callable[[str], None] = print) -> dict[str, tuple[bool, str]]:
     """按 markets 顺序更新每个池子，返回 {market: (ok, note)}。"""
     out: dict[str, tuple[bool, str]] = {}
     for m in markets:
-        out[m] = refresh_pool(m)
+        log_cb(f"[refresh] {m} 池子数据补齐中…")
+        ok, note = refresh_pool(m)
+        out[m] = (ok, note)
+        log_cb(f"[refresh] {m} {'OK' if ok else 'FAIL'}  {note}")
     return out

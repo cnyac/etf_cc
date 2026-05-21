@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Literal
+from typing import Callable, Literal
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -84,12 +84,15 @@ def _archive_path(market: str, label: str) -> str:
     return os.path.join(win.SNAPSHOT_DIR, market.lower(), f"{label}.json")
 
 
-def sync(market: Literal["A", "US"]) -> dict:
+def sync(market: Literal["A", "US"],
+         log_cb: Callable[[str], None] = print) -> dict:
     """同步指定市场的批注。返回 {synced: [...], archived: [...], skipped: [...], errors: [...]}。"""
     market_dir = os.path.join(REPORTS_DIR, market.lower())
     result = {"synced": [], "archived": [], "skipped": [], "errors": []}
     if not os.path.isdir(market_dir):
+        log_cb(f"[sync] 报告目录不存在: {market_dir}")
         return result
+    log_cb(f"[sync] 扫描 {market_dir}")
 
     last_synced = _load_last_synced()
     market_last = last_synced.get(market, {})  # {label: mtime_iso}
@@ -150,6 +153,8 @@ def sync(market: Literal["A", "US"]) -> dict:
         win.save(market, window_data)
     last_synced[market] = new_market_last
     _save_last_synced(last_synced)
+    log_cb(f"[sync] 同步 {len(result['synced'])} / 归档 {len(result['archived'])} "
+           f"/ 跳过 {len(result['skipped'])} / 错误 {len(result['errors'])}")
     return result
 
 

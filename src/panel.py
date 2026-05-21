@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from typing import Literal
 
+from src import thresholds_cfg as tcfg
 
+# 默认值（保留作为常量；运行时从 config/thresholds.yaml 读，缺失则回退默认）
 STRONG_THRESHOLD = 0.02       # ±2% 涨跌算"强"
 VOL_EXPAND = 1.5              # vol_ratio_20 > 1.5 → 扩张
 VOL_CONTRACT = 0.7            # < 0.7 → 收缩
@@ -20,16 +22,23 @@ CROSS_ASSET_FLAT = 0.003      # ±0.3% 内算 flat
 BREADTH_ALERT_PCT = 0.70      # 占比 ≥70% 触发极值共振预警
 
 
-def _cross_asset_dir(pct: float) -> str:
-    if pct > CROSS_ASSET_FLAT:
+def _cross_asset_dir(pct: float, flat_thr: float) -> str:
+    if pct > flat_thr:
         return "up"
-    if pct < -CROSS_ASSET_FLAT:
+    if pct < -flat_thr:
         return "down"
     return "flat"
 
 
 def build_panel(per_ticker: list[dict], pool_config: dict,
                 market: Literal["A", "US"]) -> dict:
+    # 每次构造时拉一次阈值（GUI 改完即可生效，无需重启进程）
+    strong_thr = tcfg.get("STRONG_THRESHOLD", STRONG_THRESHOLD)
+    vol_exp_thr = tcfg.get("VOL_EXPAND", VOL_EXPAND)
+    vol_con_thr = tcfg.get("VOL_CONTRACT", VOL_CONTRACT)
+    flat_thr = tcfg.get("CROSS_ASSET_FLAT", CROSS_ASSET_FLAT)
+    alert_pct = tcfg.get("BREADTH_ALERT_PCT", BREADTH_ALERT_PCT)
+
     # 基础计数
     up = down = flat = 0
     strong_up = strong_down = 0
@@ -48,16 +57,16 @@ def build_panel(per_ticker: list[dict], pool_config: dict,
             down += 1
         else:
             flat += 1
-        if pct > STRONG_THRESHOLD:
+        if pct > strong_thr:
             strong_up += 1
-        elif pct < -STRONG_THRESHOLD:
+        elif pct < -strong_thr:
             strong_down += 1
 
         vr = t.get("vol_ratio_20")
         if vr is not None:
-            if vr > VOL_EXPAND:
+            if vr > vol_exp_thr:
                 vol_exp += 1
-            elif vr < VOL_CONTRACT:
+            elif vr < vol_con_thr:
                 vol_con += 1
 
         if t.get("new_high_20d") is True:
@@ -82,15 +91,15 @@ def build_panel(per_ticker: list[dict], pool_config: dict,
     cross_asset: dict[str, str | None] = {}
     for role, code in role_to_code.items():
         p = pct_by_code.get(code)
-        cross_asset[role] = _cross_asset_dir(p) if p is not None else None
+        cross_asset[role] = _cross_asset_dir(p, flat_thr) if p is not None else None
 
     # 极值共振预警（任务 2.0）：上涨/下跌占比 ≥70%
     total = up + down + flat
     breadth_alert: str | None = None
     if total > 0:
-        if up / total >= BREADTH_ALERT_PCT:
+        if up / total >= alert_pct:
             breadth_alert = "bullish_resonance"
-        elif down / total >= BREADTH_ALERT_PCT:
+        elif down / total >= alert_pct:
             breadth_alert = "bearish_resonance"
 
     panel = {

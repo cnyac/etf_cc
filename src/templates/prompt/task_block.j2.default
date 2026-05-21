@@ -1,0 +1,21 @@
+=== 任务 ===
+为当前时段 {{ current_label }} 产出 narrative JSON，结构如下：
+
+{
+  "is_skeleton": false,
+  "session_summary": "<~100字：风格判断 + 主线锚定 + 预期推演 + 风险提示；若昨判被打脸则先写纠错>",
+  "ticker_analyses": {
+    "<code>": "<50-100字：该品种值得关注的原因、量价信号、应对思路>",
+    ...每个分类挑 1-2 个重点品种
+  },
+  "strategy_outlook": {...},
+  "unique_anomaly_analysis": "<200-500字 或 null>",
+  "macro_cycle_anchor": {...} 或 null,
+  "ticker_audits": {...},
+  ...各人格字段（含 free_analysis ≤200 字，含可选 prev_session_audit；见下方 schema）
+}
+
+只返回 JSON，不要解释。
+{{ extra_top }}
+
+{{ schema_text }}

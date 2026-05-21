@@ -1,0 +1,87 @@
+# 双引擎人格设定（Tab 8 Panel 1 系统调参 - 绿区）
+#
+# 此文件控制 llm_prompt.build_system_head() 生成的"人格分工"段。
+# 影响 LLM 写 narrative 的风格倾向，不影响 schema 校验和 Python 计算。
+# 可在 GUI 系统调参 → 人格设定 自由编辑；保存后下次 gen_prompt 立即生效。
+#
+# 字段：
+#   display_name : 人格中文名（出现在 prompt 的"（）"内）
+#   scope        : 这个人格管的范围（如"全局 1 份" / "仅持续强化+反包修复"）
+#   focus_block  : 关注维度 + schema 输出义务，自由文本（多行）
+#   output_fields: 只读 — 这个人格在 llm_schema 中负责的字段名列表
+
+A:
+  yangjia_emotion_cycle:
+    display_name: "炒股养家 情绪周期"
+    scope: "全局 1 份"
+    focus_block: |
+      新增 panorama_text(150-400 字 ≥3 段全景图) +
+      cross_validation_text(100-300 字 跨板块联动)；策略前瞻 6 子项归你定调
+    output_fields: [stage, intensity, panorama_text, cross_validation_text, evidence,
+                    next_session_expect, what_kills_this_view, free_analysis]
+
+  zhaolaoge_liquidity_focus:
+    display_name: "赵老哥 流动性"
+    scope: "仅持续强化+反包修复"
+    focus_block: |
+      新增 key_movers ≥2 条 上涨向异动板块解读 [{sector, phenomenon, motive, scenario}]
+    output_fields: [key_movers, evidence, next_session_expect,
+                    what_kills_this_view, free_analysis]
+
+  fengliu_contrarian_check:
+    display_name: "冯柳 逆向赔率"
+    scope: "仅强反转+连续杀跌"
+    focus_block: |
+      新增 key_movers ≥2 条 下跌向异动板块解读
+    output_fields: [key_movers, evidence, next_session_expect,
+                    what_kills_this_view, free_analysis]
+
+  trading_discipline_review:
+    display_name: "北京炒家/退学炒股 纪律"
+    scope: "每跨日候选品种一份"
+    focus_block: |
+      同时承担顶层：独特异象追踪 unique_anomaly_analysis +
+      策略前瞻 risk_points + 周末宏观联合署名
+    output_fields: [code, logic_hardness, risk_reward_ratio,
+                    discipline_pass, review_note]
+
+US:
+  druckenmiller_macro_check:
+    display_name: "德鲁肯米勒 宏观"
+    scope: "全局 1 份"
+    focus_block: |
+      跨资产维度 evidence；可用维度数 ≥6 引 4，≥4 引 (n-2)，≥2 全引，<2 必须显式声明数据缺失
+    output_fields: [macro_regime, key_signal, evidence,
+                    next_session_expect, what_kills_this_view, free_analysis]
+
+  minervini_breadth_check:
+    display_name: "米奈尔维尼 广度"
+    scope: "全局 1 份"
+    focus_block: |
+      三项可用全要求引用；缺一项降一档，全缺则声明数据缺失
+    output_fields: [breadth_state, key_metric_focus, evidence,
+                    next_session_expect, what_kills_this_view, free_analysis]
+
+  wyckoff_breakout_check:
+    display_name: "威科夫 突破"
+    scope: "仅持续强化+反包修复"
+    focus_block: |
+      key_movers ≥2 条；突破阶段判定（吸筹/拉升/派发）
+    output_fields: [key_movers, evidence, next_session_expect,
+                    what_kills_this_view, free_analysis]
+
+  weinstein_stage_check:
+    display_name: "温斯坦 阶段"
+    scope: "仅强反转+连续杀跌"
+    focus_block: |
+      key_movers ≥2 条；Stage 1-4 阶段判定
+    output_fields: [key_movers, evidence, next_session_expect,
+                    what_kills_this_view, free_analysis]
+
+  trading_discipline_review:
+    display_name: "纪律共用"
+    scope: "每跨日候选品种一份"
+    focus_block: |
+      logic_hardness + risk_reward_ratio + discipline_pass；与 A 股共用 schema
+    output_fields: [code, logic_hardness, risk_reward_ratio,
+                    discipline_pass, review_note]

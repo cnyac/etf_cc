@@ -1,0 +1,6 @@
+{% if is_weekend -%}
+=== 周末标志 ===
+is_weekend_close=true → macro_cycle_anchor 字段本时段必填（4 子段：asset_profile / historical_anchor / then_vs_now / forward_strategy）
+{%- else -%}
+=== 周末标志 === is_weekend_close=false → macro_cycle_anchor 填 null
+{%- endif %}

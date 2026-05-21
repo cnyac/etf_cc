@@ -239,6 +239,41 @@ python -m pytest tests/
 
 > 你（用户）日常用这个项目的实际操作步骤。从首次冷启动到每天交易日的循环，再到故障处理。
 
+## 0. 推荐：用 GUI 控制台
+
+3.5 天工时上线的 Flask 前端把所有 CLI 命令做成了按钮：
+
+```bash
+python -m src.gui.app          # 默认端口 5010
+# → 浏览器开 http://127.0.0.1:5010
+```
+
+8 个 tab 对应日常工作流的全部操作：
+
+| Tab | 替代命令 |
+|---|---|
+| ① 数据更新 | `update_all`（实时滚动日志 + ERROR/WARN 染色） |
+| ② 生成 Prompt | `gen_prompt`（label 下拉 + 一键复制） |
+| ③ 填回 Narrative | `fill_narrative`（粘贴 JSON + 错误清单展示） |
+| ④ 渲染报告 | `render_html`（iframe 缩略 + 新窗口完整打开） |
+| ⑤ 同步批注 | `sync_annotations`（拖拽 HTML → 自动覆盖 + 同步） |
+| ⑥ 批注收件 | 列 `data/reports/` 所有 HTML 与 `last_synced.json` 对比标红 |
+| ⑦ 池配置 | 表格编辑 `pool_*.yaml`，role 下拉锁定 enum |
+| ⑧ 系统调参 | 三级风险分区（绿区人格 / 黄区阈值 / 橙区 LLM 模板） |
+
+顶部状态栏常驻显示：A/US 窗口 session 数 + 最新 label + 报告缺口数 + 上次更新时间。
+右上角"日志"按钮浮出面板列 `update_*.log` 与 `errors/*.json`，**一键复制 JSON** 方便贴给 AI 修 bug。
+
+调参 tab 的红线（CLAUDE.md 禁区）：
+- **绿区**：人格设定（`config/personas.yaml`），改 LLM 风格倾向，不影响计算
+- **黄区**：量化阈值（`config/thresholds.yaml`），改 panel.strong/vol/cross_asset 等，**会破坏跨日可比性**
+- **橙区**：LLM 模板（`src/templates/prompt/*.j2`），改任务/周末段说明文字，有"恢复默认"兜底
+- 因子公式 / classify 边界 / prompt 组装逻辑 **不暴露**到 GUI，要改请改代码 + 跑测试
+
+CLI 命令仍可独立用，不会因 GUI 出现而废弃。
+
+---
+
 ## 0. 一次性首次设置
 
 ### 0.1 环境前置

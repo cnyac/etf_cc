@@ -17,6 +17,8 @@ import math
 from typing import Literal, Optional
 import pandas as pd
 
+from src import thresholds_cfg as tcfg
+
 MaAlignment = Literal["多头", "空头", "震荡"]
 Ma150Relation = Literal["站上", "跌破", "震荡"]
 
@@ -159,8 +161,8 @@ def new_low_20d(closes_incl_today: pd.Series) -> Optional[bool]:
 def ma150(closes: pd.Series) -> tuple[Optional[float], Optional[Ma150Relation]]:
     """30 周均线（150 日 SMA）。返回 (距 MA150 偏离百分比, 关系)。
 
-    偏离 % = (close - MA150) / MA150 * 100，|%|<=2 → 震荡，>2 → 站上，<-2 → 跌破。
-    仅美股调用。
+    偏离 % = (close - MA150) / MA150 * 100；
+    |%| <= MA150_NEAR_PCT（默认 2，可在 GUI 调）→ 震荡，> 站上，< 跌破。仅美股调用。
     """
     if len(closes) < 150:
         return None, None
@@ -169,9 +171,10 @@ def ma150(closes: pd.Series) -> tuple[Optional[float], Optional[Ma150Relation]]:
         return None, None
     today = float(closes.iloc[-1])
     dist = (today - ma) / ma * 100
-    if dist > 2:
+    near_pct = tcfg.get("MA150_NEAR_PCT", 2.0)
+    if dist > near_pct:
         rel: Ma150Relation = "站上"
-    elif dist < -2:
+    elif dist < -near_pct:
         rel = "跌破"
     else:
         rel = "震荡"
@@ -221,9 +224,10 @@ def compute_factors(ohlcv_df: pd.DataFrame, market: Literal["A", "US"],
     vr20 = vol_ratio_20(amounts_excl_today, today_amount_adj)
     vp20 = vol_pctile_20(amounts_incl_today)
     ma_align = ma_alignment(closes)
-    cvs_ma5 = close_vs_ma(closes, 5)
-    cvs_ma20 = close_vs_ma(closes, 20)
-    cvs_ma60 = close_vs_ma(closes, 60)
+    near_thr = tcfg.get("NEAR_MA_THRESHOLD", 0.005)
+    cvs_ma5 = close_vs_ma(closes, 5, near_threshold=near_thr)
+    cvs_ma20 = close_vs_ma(closes, 20, near_threshold=near_thr)
+    cvs_ma60 = close_vs_ma(closes, 60, near_threshold=near_thr)
     pn = pct_normalized(today_pct, highs, lows, closes) if today_pct is not None else None
     nh = new_high_20d(closes)
     nl = new_low_20d(closes)
