@@ -33,6 +33,7 @@ from src.factors import compute_factors
 from src.panel import build_panel
 from src.classify import enrich
 from src import window as win
+from src import log_util
 
 DEFAULT_POOL_A = os.path.join(ROOT, "config", "pool_a.yaml")
 DEFAULT_POOL_US = os.path.join(ROOT, "config", "pool_us.yaml")
@@ -70,8 +71,15 @@ def _adapter_for_enrich(per_ticker: list[dict], market: str, name_map: dict) -> 
 
 def build(market: Literal["A", "US"], label: str,
           session_time: Literal["noon", "close"],
-          pool_path: str | None = None) -> dict:
-    """生产单时段 session dict，append 到窗口，归档到 snapshots/。返回 session dict。"""
+          pool_path: str | None = None,
+          failures_out: list | None = None,
+          run_ts: str | None = None) -> dict:
+    """生产单时段 session dict，append 到窗口，归档到 snapshots/。返回 session dict。
+
+    failures_out: 若传入 list，单只 ticker 失败时会 append 一条 dict
+                  {ticker, error_type, message, log_path}。caller 据此汇总。
+    run_ts:       共享时间戳（让同一次 update_all 的所有错误 json 落在同一时间戳）。
+    """
     if pool_path is None:
         pool_path = DEFAULT_POOL_A if market == "A" else DEFAULT_POOL_US
 
@@ -80,6 +88,17 @@ def build(market: Literal["A", "US"], label: str,
     name_map = {e["code"]: e.get("name", e["code"]) for e in pool["etfs"]}
 
     trade_date = _trade_date_from_label(label)
+    # -午 时段是当日盘中快照，仅当 trade_date == today 时合法（防止历史回填把
+    # 全天日线 amount ×2 伪装成中午，数字会全错）
+    if session_time == "noon":
+        if market != "A":
+            raise RuntimeError(f"session=noon 仅 A 股支持 (market={market})")
+        today_str = datetime.date.today().strftime("%Y-%m-%d")
+        if trade_date != today_str:
+            raise RuntimeError(
+                f"-午 时段只能当日实时生成，不能回填历史日 "
+                f"(label={label}, today={today_str})")
+
     # 拉 200 天历史（美股 ma150 需要 150；A 股 60 够用），含目标日
     end_ts = pd.Timestamp(trade_date)
     start_ts = end_ts - pd.Timedelta(days=300)  # 自然日 → 约 200 交易日
@@ -91,36 +110,64 @@ def build(market: Literal["A", "US"], label: str,
     if df_all.empty:
         raise RuntimeError(f"未取到数据：{market} {label}")
 
-    # 每只 ticker 单独算 factors
+    # noon: 拉腾讯当日实时快照，逐只 append 到历史末尾
+    realtime_snaps: dict = {}
+    if session_time == "noon":
+        realtime_snaps = api.get_a_etf_realtime(codes)
+
+    # 每只 ticker 单独算 factors（单只挂了不影响整批）
     per_ticker = []
     for code in codes:
-        sub = df_all[df_all["code"] == code].copy()
-        if sub.empty:
-            continue
-        # 用目标日及之前
-        sub = sub[sub["date"] <= end_ts].copy()
-        if len(sub) < 2:
-            continue
-        # today_pct 直接由 factors 算；yest_pct 用 T-1 的 close / T-2 close - 1
-        closes = sub["close"].to_numpy()
-        yest_pct = None
-        if len(closes) >= 3 and closes[-3] > 0:
-            yest_pct = float(closes[-2] / closes[-3] - 1)
-        today_amount = float((sub["amount"] if "amount" in sub.columns and market == "A"
-                              else sub["volume"]).iloc[-1])
-        yest_amount = float((sub["amount"] if "amount" in sub.columns and market == "A"
-                             else sub["volume"]).iloc[-2])
+        try:
+            sub = df_all[df_all["code"] == code].copy()
+            # noon: 把腾讯快照 append 成今日那一行
+            if session_time == "noon":
+                snap = realtime_snaps.get(code)
+                if snap is None:
+                    raise RuntimeError("腾讯实时快照 None")
+                # 若历史 df 已含今日（极少：盘后回头跑 noon），先剔除
+                snap_date = pd.Timestamp(snap["日期"])
+                sub = sub[sub["date"] < snap_date]
+                row = pd.DataFrame([{
+                    "date": snap_date, "code": code,
+                    "open": snap["开盘"], "close": snap["收盘"],
+                    "high": snap["最高"], "low": snap["最低"],
+                    "volume": snap["成交量"], "amount": snap["成交额"],
+                }])
+                sub = pd.concat([sub, row], ignore_index=True)
+            if sub.empty:
+                raise RuntimeError("无任何交易日数据")
+            sub = sub[sub["date"] <= end_ts].copy()
+            if len(sub) < 2:
+                raise RuntimeError(f"历史日数 {len(sub)} < 2")
+            closes = sub["close"].to_numpy()
+            yest_pct = None
+            if len(closes) >= 3 and closes[-3] > 0:
+                yest_pct = float(closes[-2] / closes[-3] - 1)
+            today_amount = float((sub["amount"] if "amount" in sub.columns and market == "A"
+                                  else sub["volume"]).iloc[-1])
+            yest_amount = float((sub["amount"] if "amount" in sub.columns and market == "A"
+                                 else sub["volume"]).iloc[-2])
 
-        f = compute_factors(sub, market=market, session_time=session_time)
-        per_ticker.append({
-            "code": code,
-            "today_pct": f["today_pct"],
-            "yest_pct": yest_pct,
-            "today_amount": f["today_amount_adjusted"],
-            "yest_amount": yest_amount,
-            "factors": {k: v for k, v in f.items()
-                        if k not in ("today_pct", "today_amount_adjusted")},
-        })
+            f = compute_factors(sub, market=market, session_time=session_time)
+            per_ticker.append({
+                "code": code,
+                "today_pct": f["today_pct"],
+                "yest_pct": yest_pct,
+                "today_amount": f["today_amount_adjusted"],
+                "yest_amount": yest_amount,
+                "factors": {k: v for k, v in f.items()
+                            if k not in ("today_pct", "today_amount_adjusted")},
+            })
+        except Exception as e:
+            log_path = log_util.write_error(code, label, market, e, ts=run_ts)
+            if failures_out is not None:
+                failures_out.append({
+                    "ticker": code,
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "log_path": log_path,
+                })
 
     # classify.enrich 做归类
     snap_in = _adapter_for_enrich(per_ticker, market, name_map)
