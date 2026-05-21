@@ -237,15 +237,384 @@ python -m pytest tests/
 
 # 三、用户阅读版
 
-> _本部分留空，待用户工作流稳定后补充。_
->
-> 内容应包括：
->
-> - 日常使用流程（早上看美股报告 / 中午跑 A 股 / 收盘跑 A 股 + 更新美股）
-> - 如何编辑池子（pool_a.yaml / pool_us.yaml）
-> - 如何在浏览器里批注（点击品种 → 选颜色 → 写备注 → 保存）
-> - 如何把批注发回（直接发 HTML 文件给 A）
-> - 如何看历史批注线索（在新报告里点击品种展开）
-> - 如何主动剔除某个时段
-> - 数据更新失败时怎么办（看 `data/logs/errors/` 里的明细）
-> - 常见问题速答
+> 你（用户）日常用这个项目的实际操作步骤。从首次冷启动到每天交易日的循环，再到故障处理。
+
+## 0. 一次性首次设置
+
+### 0.1 环境前置
+
+确认两件事：
+
+```bash
+# 1. auto-prtsc 数据基础设施在位
+ls "D:/git/auto prtsc/etf_data_api.py"      # 应存在
+
+# 2. Python 依赖
+pip install -r requirements.txt
+```
+
+### 0.2 池配置（按需编辑）
+
+```
+config/
+├── pool_a.yaml      # A 股池子：42 ETF + 跨资产代表
+└── pool_us.yaml     # 美股池子：45 个股/ETF
+```
+
+每条 entry 格式：
+
+```yaml
+etfs:
+  - code: SH510050
+    name: 上证50ETF
+    role: ""            # 可选；treasury_10y / gold / oil / dollar / vix / btc / eth 等
+                        # 含 role 的进入 panel.cross_asset_state
+```
+
+加品种 / 删品种 / 改名 → 直接改 yaml；下一次 `update_all` 自动生效。**不要改 role 字段的取值集合**（panel 计算依赖固定 key）。
+
+### 0.3 首次跑历史回填
+
+让窗口里先有 ~10 天历史数据（A 股），AI 才有上下文判断"今天 vs 过去"：
+
+```bash
+# A 股回填最近 10 个交易日（只补 -收，-午 无法回填）
+python -m src.backfill --market A --start 2026-05-08 --end 2026-05-20
+
+# 美股同步
+python -m src.backfill --market US --start 2026-05-08 --end 2026-05-20
+```
+
+backfill 出的 narrative 是 **骨架**（`is_skeleton=true`，Python 模板拼的一句话汇总），不是 LLM 写的。后续每个新时段的 narrative 由 LLM 写满。
+
+---
+
+## 1. 日常工作流（每个交易日）
+
+A 股一天 2 个时段，美股 1 个时段（次日早晨）。完整循环是 **数据 → AI 写 → 出报告 → 协作者批注 → 同步回**。
+
+### 1.1 全天节奏一览
+
+| 时刻 | 操作 | 命令 |
+|---|---|---|
+| **早 9:00** | 看夜里跑出的美股报告 | 浏览器开 `data/reports/us/2026-05-20.html` |
+| **中午 11:35-15:05** | 跑 A 股午时段（实时盘中快照） | `python -m src.update_all --markets A` |
+| **下午 15:05 后** | 跑 A 股收时段 | `python -m src.update_all --markets A` |
+| **次日早 5:30 后** | 跑美股（昨晚收盘） | `python -m src.update_all --markets US` |
+
+`update_all` 内部做 4 件事：①调 auto-prtsc 补底层切片 ②扫缺哪些 label ③逐 label 跑 build_snapshot ④落汇总日志。它**只做到 snapshot 落地**，narrative 还是 None。后面要手动跑 LLM。
+
+### 1.2 跑一个时段完整步骤（以 A 股 2026-05-20-收 为例）
+
+**Step 1：数据 + Snapshot**
+
+```bash
+python -m src.update_all --markets A
+```
+
+跑完看输出：
+
+```
+=== 数据更新汇总 2026-05-20 15:08:00 ===
+池子数据补齐:
+  A  OK  A 股池: ok=2 skip=37 fail=0 /39
+A / 2026-05-20-收  成功 39/39
+总耗时 8.3s
+日志: data/logs/update_20260520-150800.log
+```
+
+39/39 表示全池成功；如有失败看 `data/logs/errors/` 里的 json。
+
+**Step 2：生成 prompt**
+
+```bash
+python -m src.gen_prompt --market A --label 2026-05-20-收 > prompt.txt
+```
+
+`prompt.txt` 是给 LLM 的完整提示词（含历史上下文、当前盘面、schema 约束、人格分工说明）。一般 5-15 KB。
+
+**Step 3：把 prompt 喂给 LLM**
+
+打开 Claude Desktop / Claude.ai / ChatGPT / 你常用的，把 `prompt.txt` 全文粘进去。LLM 会按 schema 返回一个 JSON。
+
+完整 JSON 大致是这样：
+
+```json
+{
+  "is_skeleton": false,
+  "session_summary": "今日 A 股呈现典型分化：上涨 15/39（占比 38.5%）……",
+  "yangjia_emotion_cycle": {
+    "stage": "试错", "intensity": "中",
+    "evidence": "上涨 15/39，强势仅 1 个，缩量主导",
+    "next_session_expect": "明日早盘若仍无放量主线 → 情绪继续退潮",
+    "what_kills_this_view": "明日早盘 ≥5 只强势 ETF 涨幅 >2%",
+    "free_analysis": "……",
+    "panorama_text": "一、上涨与下跌占比……\n二、跨资产侧……\n三、量能扩张……",
+    "cross_validation_text": "权重板块普跌……",
+    "prev_session_audit": {
+      "actual_vs_expected": "符合预期",
+      "audit_note": "情绪如预期退潮，与昨日 expect 一致"
+    }
+  },
+  "zhaolaoge_liquidity_focus": {
+    "...": "...",
+    "key_movers": [
+      {"sector": "通信", "phenomenon": "放量上涨 2.3%",
+       "motive": "机构进攻 5G", "scenario": "若量能持续 → 主线确立"},
+      {"sector": "酒", "phenomenon": "缩量反包",
+       "motive": "超跌反弹 防御资金", "scenario": "持续性弱"}
+    ]
+  },
+  "fengliu_contrarian_check": {
+    "...": "...",
+    "key_movers": [{"sector": "...", ...}, {"sector": "...", ...}]
+  },
+  "trading_discipline_review": [
+    {"code": "SH510050", "logic_hardness": "硬", "risk_reward_ratio": "优",
+     "discipline_pass": true, "review_note": "..."},
+    "..."
+  ],
+  "strategy_outlook": {
+    "market_phase": "高位分歧",
+    "trend_forecast": "震荡",
+    "style_tone": "偏向防守",
+    "attack_direction": "弱合力，无明确主攻",
+    "retreat_direction": "高位题材资金撤出",
+    "key_focus": ["明日券商是否补涨", "10Y 国债收益率"],
+    "risk_points": ["机构调仓引发踩踏", "外资突然撤离"]
+  },
+  "unique_anomaly_analysis": "今日跨资产侧……（200-500 字）",
+  "macro_cycle_anchor": null,
+  "ticker_analyses": {
+    "SH510050": "上证50放量上涨 0.9%……",
+    "SH518880": "黄金 ETF 缩量大跌 -1.5%……"
+  },
+  "ticker_audits": {
+    "SH510050": {"actual_vs_expected": "超于预期", "auditor": "zhaolaoge"}
+  }
+}
+```
+
+把这个 JSON 保存为 `narrative.json`（任意路径）。
+
+**Step 4：校验 + 回填**
+
+```bash
+python -m src.fill_narrative --market A --label 2026-05-20-收 --json narrative.json
+```
+
+校验通过 → 打印 `OK narrative 已回填到 A/2026-05-20-收`。
+
+校验失败 → 列出具体错误（哪个字段 enum 不对 / 缺什么 / 长度超限）。**修 JSON 重跑**，直到通过。
+
+**Step 5：渲染 HTML**
+
+```bash
+python -m src.render_html --market A --label 2026-05-20-收
+```
+
+输出文件路径：`data/reports/a/2026-05-20-收.html`，浏览器打开就是最终报告。
+
+### 1.3 把报告发给 B + 收回批注
+
+**发出去**：直接发 `data/reports/a/2026-05-20-收.html` 给 B（微信 / 邮件 / 网盘均可，单文件自包含）。
+
+**B 在浏览器做的事**（B 不需要装任何东西）：
+
+1. 浏览器双击打开 HTML
+2. **点击任意品种行** → 弹出 modal
+3. 在 modal 里：
+   - **选浅色**（红/橙/黄系列预设；或自己填 hex，会被自动校验"足够浅"）
+   - **写备注**（自由文本）
+4. 点"确定"，颜色立刻染到行背景（3 行整组）
+5. 右下角"保存"按钮：
+   - **首次点保存** → 浏览器弹原生文件对话框，让 B 选保存位置（**必须覆盖原 HTML 文件本身**）
+   - **之后再点** → File System Access API 直接覆写源文件，无对话框
+6. 不喜欢某个批注 → 再点同品种 → "清除批注"按钮
+
+B 改完直接把同一个 HTML 文件发回（不是另存为）。
+
+**收回来**：
+
+1. 把 B 发回的 HTML 文件**直接覆盖** `data/reports/a/2026-05-20-收.html`
+2. 跑同步：
+
+```bash
+python -m src.sync_annotations --market A
+```
+
+它扫整个 `data/reports/a/` 找比 `data/window/last_synced.json` 里时间戳更新的 HTML，解析 `<script id="annotations">` 块，把批注写回：
+
+- 该 label 还在窗口 → 写 `data/window/pool_a.json` 对应 session.tickers[i].annotation
+- 该 label 已被弹出窗口 → 写 `data/snapshots/a/<label>.json` 兜底（永久留档）
+
+**下一次跑 prompt 时**，prompt 里的"批注轨迹"段会自动带上 B 标过的颜色 + 备注，LLM 据此分析这只品种的连续关注度。
+
+---
+
+## 2. 周末特殊流程
+
+**周五 A 股收盘报告** + **周一早晨美股报告（对应周五收盘）** 会触发 `is_weekend_close=true`。
+
+`build_snapshot` 自动检测周五；prompt 自动加：
+
+> 周末标志: is_weekend_close=true → macro_cycle_anchor 字段本时段必填（4 子段：asset_profile / historical_anchor / then_vs_now / forward_strategy）
+
+LLM 会额外产 `macro_cycle_anchor` 字段：
+
+```json
+"macro_cycle_anchor": {
+  "asset_profile": "当前资金极致追逐抗通胀与避险实物资产……（一句话）",
+  "historical_anchor": {
+    "year": "1979-1980",
+    "event": "第二次石油危机 + 美联储沃尔克鹰派加息",
+    "phase": "典型滞胀末期",
+    "brief": "彼时通胀高企、能源/黄金狂涨、权益压制……"
+  },
+  "then_vs_now": {
+    "similarity": "黄金 + 原油同涨 + 利率上行压制估值……",
+    "divergence": "当前有 AI 算力革命作新动能 + 央行干预工具进化……"
+  },
+  "forward_strategy": {
+    "risks": "若美联储重启加息 → 高估值科技踩踏风险陡升",
+    "opportunities": "周期末期资源股 + AI 算力链可能迎主升"
+  }
+}
+```
+
+HTML 报告会在底部多出 §7 灰色"宏观周期定位"卡片。
+
+平日（周一-周四）`macro_cycle_anchor: null`，§7 不显示。
+
+---
+
+## 3. 故障排查
+
+### 3.1 数据没拉到
+
+**症状**：`update_all` 输出 `失败 X/Y` 或 `0/0`。
+
+**查**：
+
+```bash
+# 看最新汇总
+cat data/logs/update_$(ls -t data/logs/ | head -1)
+
+# 看具体某只 ticker 的错误
+cat data/logs/errors/<时间戳>_<code>.json
+```
+
+里面有 `error_type` + `message` + `traceback`。把这个 JSON 路径丢给 AI："看下这个错误"，它能直接判断是池子配置问题、数据源故障、还是切片本身缺数据。
+
+### 3.2 narrative 校验失败
+
+**症状**：`fill_narrative` 打印 `校验失败 (N 个错误)`。
+
+**最常见 5 个错误**：
+
+| 错误信息 | 原因 | 修法 |
+|---|---|---|
+| `xxx.stage='牛顶' 不在白名单 [...]` | LLM 创了新词 | 让 LLM 重写，只能用白名单值 |
+| `xxx.what_kills_this_view 必填但缺失/空` | LLM 偷工 | 让 LLM 补上"证伪条件" |
+| `zhaolaoge_liquidity_focus.key_movers 至少 2 条` | LLM 只写了 1 条 | 让它再凑 1 条 |
+| `panorama_text 长度 95 不在 [150, 400] 区间` | 写短了 | 让 LLM 展开到 ≥150 字 |
+| `ticker_audits[...].auditor='quant' 不允许` | LLM 误填了 quant | 改成具体人格名（yangjia/zhaolaoge/fengliu/discipline） |
+
+修完重跑 `fill_narrative` 即可，**不需要重跑 update_all 或 gen_prompt**。
+
+### 3.3 HTML 渲染缺模块
+
+**症状**：报告里没 §6 策略前瞻 / 没 §3.5 独特异象。
+
+**原因**：narrative 是 None（没跑 LLM）或 `is_skeleton=true`（backfill 的骨架）。模板 if-guard 会跳过新模块。
+
+**修法**：跑 `gen_prompt → fill_narrative → render_html` 走一遍。
+
+### 3.4 批注同步丢失
+
+**症状**：`sync_annotations` 提示 `没新报告需同步`。
+
+**查**：
+
+```bash
+cat data/window/last_synced.json
+ls -la data/reports/a/   # 看 HTML 文件 mtime
+```
+
+如果 HTML mtime 比 `last_synced` 早，sync 就跳过它。**解决**：B 发回的 HTML 必须替换源文件（mtime 会更新），不能是另存的副本。
+
+实在不行：删 `data/window/last_synced.json` 强制全部重扫。
+
+### 3.5 想剔除某个时段
+
+比如某天数据有问题不想让它影响后续 AI 判断：
+
+```bash
+python -c "from src import window as win; win.remove_session('A', '2026-05-15-收')"
+```
+
+`snapshots/a/2026-05-15-收.json` 永久留档**不动**；只从窗口里剔出去。下一次 `gen_prompt` 不再带这一时段。
+
+如果要彻底删（包括归档）：手动删 `data/snapshots/a/2026-05-15-收.json`。
+
+---
+
+## 4. 进阶操作
+
+### 4.1 跳过底层数据补齐
+
+底层切片已经在别处更新过 / 急着出报告：
+
+```bash
+python -m src.update_all --markets A --skip-refresh
+```
+
+### 4.2 回看更远的报告缺口
+
+默认回看 7 天，想看 14 天：
+
+```bash
+python -m src.update_all --lookback 14
+```
+
+### 4.3 重新渲染老报告（修了模板想看效果）
+
+直接跑 render，会读 `data/window/` 或 `data/snapshots/` 里已有数据：
+
+```bash
+python -m src.render_html --market A --label 2026-05-19-收
+```
+
+不会重跑 LLM。
+
+### 4.4 强制重跑某时段 snapshot（数据有问题）
+
+```bash
+python -m src.build_snapshot --market A --label 2026-05-20-收 --session close
+```
+
+会覆盖同 label 的 snapshot + 窗口位置（同 label 原地覆盖，不重复添加）。
+
+注意：narrative 会被重置成 None，要重跑 LLM。
+
+---
+
+## 5. 常见问题速答
+
+**Q：跑 LLM 一次要花多少 token？**
+A：prompt 通常 8-15 KB（约 4000-8000 tokens），返回的 narrative JSON 约 3-6 KB。Claude Sonnet 单次约 ¥0.5-1。
+
+**Q：A 股池子里加了一只新 ETF，需要做什么？**
+A：改 `config/pool_a.yaml` 加一条 entry；下次 `update_all` 自动新增切片 + 该品种从该时段起进入 panel/factors/classify 计算。**历史时段不补该品种**（因为没数据）。
+
+**Q：B 不会用 File System Access API（旧浏览器）怎么办？**
+A：HTML 会自动降级——批注存在浏览器 localStorage，并在右下角持续提示"未保存"。这种情况下 B 要"另存为"成新文件发回。
+
+**Q：报告太大了浏览器卡？**
+A：220 KB 左右是正常的（含 30 天 sparkline + 全 panel snapshot 内嵌）。卡的话先关其他 tab。
+
+**Q：can I 把 A 股和美股报告合并成一个？**
+A：不行，且故意不做。双市场独立报告是 §一 核心约束 #4（互不影响）。
+
+**Q：旧报告里看 narrative 历史的话，要去哪？**
+A：`data/snapshots/a/<label>.json` 是永久归档，含完整 narrative；如果之前没跑 LLM 就 `is_skeleton=true` 的骨架。`data/window/pool_a.json` 只保留滚动窗口里的（≤40 个 A 股 / ≤20 个美股）。
