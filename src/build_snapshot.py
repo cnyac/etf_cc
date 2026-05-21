@@ -75,12 +75,16 @@ def build(market: Literal["A", "US"], label: str,
           pool_path: str | None = None,
           failures_out: list | None = None,
           run_ts: str | None = None,
-          log_cb: Callable[[str], None] = print) -> dict:
+          log_cb: Callable[[str], None] = print,
+          ohlcv_cache: pd.DataFrame | None = None) -> dict:
     """生产单时段 session dict，append 到窗口，归档到 snapshots/。返回 session dict。
 
     failures_out: 若传入 list，单只 ticker 失败时会 append 一条 dict
                   {ticker, error_type, message, log_path}。caller 据此汇总。
     run_ts:       共享时间戳（让同一次 update_all 的所有错误 json 落在同一时间戳）。
+    ohlcv_cache:  可选预拉的整池 OHLCV DataFrame（>= 200 个交易日历史，含本 label
+                  trade_date）。传入时跳过 fetch，直接从 cache 切片，多 label 共享拉取
+                  可省 N-1 次网络/IO。注：noon 时段仍需独立拉腾讯实时快照。
     """
     if pool_path is None:
         pool_path = DEFAULT_POOL_A if market == "A" else DEFAULT_POOL_US
@@ -107,10 +111,18 @@ def build(market: Literal["A", "US"], label: str,
     start_str = start_ts.strftime("%Y-%m-%d")
     end_str = end_ts.strftime("%Y-%m-%d")
 
-    fetch = api.get_a_etf_ohlcv if market == "A" else api.get_us_ohlcv
-    df_all = fetch(codes, start_str, end_str)
-    if df_all.empty:
-        raise RuntimeError(f"未取到数据：{market} {label}")
+    if ohlcv_cache is not None and not ohlcv_cache.empty:
+        # 用 cache：按 trade_date 切前 300 自然日窗口
+        df_all = ohlcv_cache[
+            (ohlcv_cache["date"] >= start_ts) & (ohlcv_cache["date"] <= end_ts)
+        ].copy()
+        if df_all.empty:
+            raise RuntimeError(f"cache 切片为空：{market} {label}")
+    else:
+        fetch = api.get_a_etf_ohlcv if market == "A" else api.get_us_ohlcv
+        df_all = fetch(codes, start_str, end_str)
+        if df_all.empty:
+            raise RuntimeError(f"未取到数据：{market} {label}")
 
     # noon: 拉腾讯当日实时快照，逐只 append 到历史末尾
     realtime_snaps: dict = {}

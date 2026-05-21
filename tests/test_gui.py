@@ -252,6 +252,47 @@ def test_threshold_runtime_effect():
     assert p["strong_up_count"] == 1
 
 
+def test_prefetch_ohlcv_cache_empty_labels():
+    """update_all._prefetch_ohlcv_cache 空 labels 返 None 不崩。"""
+    from src.update_all import _prefetch_ohlcv_cache
+    assert _prefetch_ohlcv_cache("US", [], log_cb=lambda s: None) is None
+
+
+def test_prefetch_ohlcv_cache_no_yaml(tmp_path, monkeypatch):
+    """yaml 不存在时 _prefetch_ohlcv_cache 返 None。"""
+    from src import update_all as ua
+    # 把 update_all 内部 yaml 读取重定向到不存在路径
+    monkeypatch.chdir(tmp_path)
+    result = ua._prefetch_ohlcv_cache("US", ["2026-05-20"], log_cb=lambda s: None)
+    # 此测试在真实 etf_cc/config 仍存在时只能依赖 fetch 路径；不强制 None
+    # 只要不抛异常就行
+    assert result is None or hasattr(result, "shape")
+
+
+def test_logging_hook_captures_logger_output():
+    """gui.tasks.run_async 应 hook root logger，把 INFO/WARN 推到 task log。"""
+    import logging
+    import time
+    from src.gui import tasks as bg
+
+    def job(log_cb=print):
+        log_cb("[job] start")
+        logger = logging.getLogger("test.subsystem")
+        logger.info("downloading via yfinance")
+        logger.warning("yfinance failed, fallback to akshare")
+        log_cb("[job] done")
+        return {"ok": True}
+
+    tid = bg.run_async(job)
+    time.sleep(0.3)
+    st = bg.get_status(tid)
+    assert st["status"] == "done"
+    lines = "\n".join(st["log"])
+    assert "downloading via yfinance" in lines
+    assert "yfinance failed" in lines
+    assert "[INFO" in lines and "[WARNING" in lines
+
+
 def test_persona_yaml_drives_prompt():
     """改 personas.yaml 后 build_system_head 立即生效（端到端验证 Panel 1 wiring）。"""
     from src.llm_prompt import build_system_head

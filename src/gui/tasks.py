@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import traceback
@@ -34,8 +35,31 @@ def _make_state() -> dict:
     }
 
 
+class _ThreadLogHandler(logging.Handler):
+    """把 root logger 的 INFO/WARN/ERROR 路由到指定 task 的 log_cb。
+
+    只捕获**本任务线程**的日志记录（用 thread ident 过滤），避免 GUI Flask
+    自身 / 其它任务的 log 混进来。
+    """
+    def __init__(self, log_cb, owner_thread_ident):
+        super().__init__(level=logging.INFO)
+        self._cb = log_cb
+        self._owner = owner_thread_ident
+        self.setFormatter(logging.Formatter("[%(levelname)s %(name)s] %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:  # noqa: D401
+        if record.thread != self._owner:
+            return
+        try:
+            self._cb(self.format(record))
+        except Exception:
+            pass
+
+
 def run_async(func: Callable, *args, **kwargs) -> str:
-    """启动后台任务；func 内 print 不被捕获，但 func 通过 log_cb 推日志。"""
+    """启动后台任务；func 通过 log_cb 推日志；同时 hook Python logging（root logger）
+    以捕获 auto-prtsc 的 INFO/WARN（如 'yfinance 批量下载…' / 'yfinance 失败，降级 xxx'）。
+    """
     task_id = _new_id()
     with _lock:
         _tasks[task_id] = _make_state()
@@ -45,6 +69,13 @@ def run_async(func: Callable, *args, **kwargs) -> str:
             _tasks[task_id]["log"].append(str(msg))
 
     def _wrap():
+        # 挂载本线程专属 logging handler
+        root = logging.getLogger()
+        # 确保 root level 允许 INFO 通过（auto-prtsc 用 basicConfig 已设过，这里兜底）
+        if root.level > logging.INFO or root.level == logging.NOTSET:
+            root.setLevel(logging.INFO)
+        handler = _ThreadLogHandler(_log, threading.get_ident())
+        root.addHandler(handler)
         try:
             kwargs["log_cb"] = _log
             result = func(*args, **kwargs)
@@ -60,6 +91,8 @@ def run_async(func: Callable, *args, **kwargs) -> str:
                 _tasks[task_id]["log"].append(f"[ERROR] {type(e).__name__}: {e}")
                 _tasks[task_id]["log"].append(tb)
                 _tasks[task_id]["ended_at"] = time.time()
+        finally:
+            root.removeHandler(handler)
 
     t = threading.Thread(target=_wrap, daemon=True)
     t.start()
