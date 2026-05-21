@@ -1,0 +1,80 @@
+# 美股池监控池（用户给定 44 只 + 补 IEF 用作 treasury_10y 代表 = 45 只）
+#
+# 字段：
+#   code:      美股 ticker（直接用，如 SPY / TSLA / BRK.B）
+#   name:      中文/英文显示名
+#   category:  分类（用于报告分组；与 classify.py 的四象限归类无关）
+#   role:      可选；跨资产代表标注。8 个允许值：
+#              treasury_10y / treasury_30y / dollar / gold / oil / vix / btc / eth
+#              填写后参与 panel.cross_asset_state 派生
+#
+# 注：treasury_30y 用户未给（TLT 等）。当前 cross_asset_state.treasury_30y 将为 None；
+#     若需补，在 GUI 池配置 tab 增一行：code=TLT, name=20年期国债ETF, role=treasury_30y
+
+etfs:
+  # === 跨资产代表（先列，方便引用）===
+  - { code: IEF,    name: 7-10年期国债ETF,         category: 利率债,   role: treasury_10y }
+  - { code: UUP,    name: 美元做多货币投资组合,    category: 外汇,     role: dollar }
+  - { code: GLD,    name: 黄金ETF,                 category: 贵金属,   role: gold }
+  - { code: USO,    name: 轻质低硫原油,            category: 原油,     role: oil }
+  - { code: VIXY,   name: 短期VIX期货ETF,          category: 波动率,   role: vix }
+  - { code: IBIT,   name: iShares Bitcoin Trust,   category: 加密,     role: btc }
+  - { code: ETHA,   name: 以太币-美元参考利率,     category: 加密,     role: eth }
+
+  # === 宽基指数 ETF ===
+  - { code: SPY,    name: 标普500 ETF-SPDR,        category: 宽基 }
+  - { code: QQQ,    name: 纳斯达克100指数ETF,      category: 宽基 }
+  - { code: IWM,    name: 罗素2000指数ETF,         category: 宽基 }
+  - { code: RSP,    name: 标普500等权指数ETF,      category: 宽基 }
+  - { code: XLE,    name: 能源精选行业指数ETF,     category: 能源 }
+
+  # === 科技 / 半导体 ===
+  - { code: NVDA,   name: 英伟达,                  category: 科技 }
+  - { code: AVGO,   name: 博通,                    category: 科技 }
+  - { code: MSFT,   name: 微软,                    category: 科技 }
+  - { code: GOOGL,  name: 谷歌A,                   category: 科技 }
+  - { code: META,   name: Meta,                    category: 科技 }
+  - { code: AAPL,   name: 苹果,                    category: 科技 }
+  - { code: AMZN,   name: 亚马逊,                  category: 科技 }
+  - { code: MU,     name: 美光科技,                category: 科技 }
+  - { code: AMD,    name: 超威半导体,              category: 科技 }
+  - { code: PLTR,   name: Palantir,                category: 科技 }
+  - { code: NFLX,   name: 奈飞,                    category: 科技 }
+
+  # === 消费 ===
+  - { code: KO,     name: 可口可乐,                category: 消费 }
+  - { code: COST,   name: 好市多,                  category: 消费 }
+  - { code: WMT,    name: 沃尔玛,                  category: 消费 }
+  - { code: BKNG,   name: Booking Holdings,        category: 消费 }
+  - { code: HD,     name: 家得宝,                  category: 消费 }
+
+  # === 医药 ===
+  - { code: LLY,    name: 礼来,                    category: 医药 }
+  - { code: ISRG,   name: 直觉外科,                category: 医药 }
+
+  # === 金融 ===
+  - { code: BRK.B,  name: 伯克希尔哈撒韦 B,        category: 金融 }
+  - { code: JPM,    name: 摩根大通,                category: 金融 }
+  - { code: GS,     name: 高盛,                    category: 金融 }
+  - { code: BX,     name: 黑石,                    category: 金融 }
+
+  # === 工业 / 高端制造 ===
+  - { code: CAT,    name: 卡特彼勒,                category: 高端制造 }
+  - { code: DE,     name: 迪尔,                    category: 高端制造 }
+  - { code: LMT,    name: 洛克希德马丁,            category: 军工 }
+
+  # === 周期资源 ===
+  - { code: LIN,    name: Linde,                   category: 周期资源 }
+  - { code: MP,     name: MP Materials,            category: 周期资源 }
+  - { code: NUE,    name: 纽柯钢铁,                category: 周期资源 }
+  - { code: FCX,    name: 麦克莫兰铜金,            category: 周期资源 }
+
+  # === 汽车 / 新能源汽车 ===
+  - { code: TSLA,   name: 特斯拉,                  category: 新能源汽车 }
+  - { code: GM,     name: 通用汽车,                category: 汽车 }
+
+  # === 能源 / 核电 ===
+  - { code: CEG,    name: Constellation Energy,    category: 能源 }
+
+  # === 交运 ===
+  - { code: DAL,    name: 达美航空,                category: 交运 }

@@ -24,6 +24,7 @@ from src.llm_schema import (
     ENUM_MARKET_PHASE, ENUM_TREND_FORECAST, ENUM_STYLE_TONE,
     STRATEGY_OUTLOOK_SCHEMA, MACRO_CYCLE_SCHEMA, UNIQUE_ANOMALY_LEN,
     TICKER_AUDIT_SCHEMA,
+    normalize_audit_rating,
 )
 
 # 维度名 → 中文别名（LLM 写 evidence 时可能用中文）
@@ -94,8 +95,12 @@ def _validate_prev_audit(field: dict, label: str, errors: list) -> None:
         errors.append(f"{label}.prev_session_audit 应为 dict 或 null")
         return
     rating = pa.get("actual_vs_expected")
-    if rating not in ENUM_AUDIT_RATING:
-        errors.append(f"{label}.prev_session_audit.actual_vs_expected={rating!r} 不在白名单 {ENUM_AUDIT_RATING}")
+    normalized = normalize_audit_rating(rating)
+    if normalized is None:
+        errors.append(f"{label}.prev_session_audit.actual_vs_expected={rating!r} 不在白名单 {ENUM_AUDIT_RATING}"
+                      f"（同义词亦可：强超/强超预期/超/超预期/符合/低/不及预期/强低/远低于预期）")
+    else:
+        pa["actual_vs_expected"] = normalized  # 归一化写回
     note = pa.get("audit_note", "")
     if note and len(note) > AUDIT_NOTE_MAX:
         errors.append(f"{label}.prev_session_audit.audit_note 超 {AUDIT_NOTE_MAX} 字")
@@ -309,8 +314,12 @@ def _validate_ticker_audits(audits, errors: list) -> None:
             errors.append(f"ticker_audits[{code}] 应为 dict")
             continue
         rating = a.get("actual_vs_expected")
-        if rating not in ENUM_AUDIT_RATING:
-            errors.append(f"ticker_audits[{code}].actual_vs_expected={rating!r} 不在白名单")
+        normalized = normalize_audit_rating(rating)
+        if normalized is None:
+            errors.append(f"ticker_audits[{code}].actual_vs_expected={rating!r} 不在白名单 {ENUM_AUDIT_RATING}"
+                          f"（同义词亦可：强超/强超预期/超/超预期/符合/低/不及预期/强低/远低于预期）")
+        else:
+            a["actual_vs_expected"] = normalized  # 归一化写回
         auditor = a.get("auditor")
         if auditor not in ENUM_AUDITOR:
             errors.append(f"ticker_audits[{code}].auditor={auditor!r} 不在白名单")

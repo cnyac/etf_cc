@@ -7,9 +7,59 @@
   - minervini 降级机制
   - discipline_pass=false + rating_override 规则
   - is_skeleton=true → 跳过 LLM 字段校验
+  - audit_rating 同义词归一化（2026-05-21 用户实测修复）
 """
 import pytest
+from src.llm_schema import normalize_audit_rating
 from src.llm_validate import validate_narrative
+
+
+# ─────── audit rating 归一化（2026-05-21 修复）───────
+def test_normalize_audit_rating_synonyms():
+    assert normalize_audit_rating("强超") == "强超于预期"
+    assert normalize_audit_rating("强超预期") == "强超于预期"
+    assert normalize_audit_rating("强超于预期") == "强超于预期"
+    assert normalize_audit_rating("超") == "超于预期"
+    assert normalize_audit_rating("超预期") == "超于预期"
+    assert normalize_audit_rating("符合") == "符合预期"
+    assert normalize_audit_rating("不及预期") == "低于预期"
+    assert normalize_audit_rating("远低于预期") == "强低于预期"
+    assert normalize_audit_rating("莫名其妙") is None
+    assert normalize_audit_rating(None) is None
+    assert normalize_audit_rating(42) is None
+
+
+def test_validate_ticker_audits_normalizes_synonym():
+    """LLM 给 '强超' / '超预期' 等简写应通过校验并归一化写回。"""
+    narrative = {
+        "is_skeleton": False, "session_summary": "x",
+        "ticker_audits": {
+            "SH516110": {"actual_vs_expected": "强超", "auditor": "yangjia"},
+            "SZ159732": {"actual_vs_expected": "超预期", "auditor": "zhaolaoge"},
+        },
+    }
+    ok, errors = validate_narrative(narrative, "A", panel={}, is_weekend_close=False)
+    for e in errors:
+        assert "actual_vs_expected" not in e, f"不该报 audit rating 错: {e}"
+    assert narrative["ticker_audits"]["SH516110"]["actual_vs_expected"] == "强超于预期"
+    assert narrative["ticker_audits"]["SZ159732"]["actual_vs_expected"] == "超于预期"
+
+
+def test_validate_ticker_audits_unknown_still_errors():
+    narrative = {
+        "is_skeleton": False, "session_summary": "x",
+        "ticker_audits": {"X": {"actual_vs_expected": "莫名其妙", "auditor": "yangjia"}},
+    }
+    ok, errors = validate_narrative(narrative, "A", panel={}, is_weekend_close=False)
+    assert any("actual_vs_expected" in e and "莫名其妙" in e for e in errors)
+
+
+def test_data_refresh_missing_yaml_friendly():
+    """pool_us.yaml 缺失时 refresh_pool 不抛异常，返 (True, '跳过' 信息)。"""
+    from src import data_refresh
+    ok, note = data_refresh.refresh_pool("US", pool_path="/nonexistent/pool_xx.yaml")
+    assert ok is True
+    assert "不存在" in note and "跳过" in note
 
 
 # ---------- 顶层 ----------

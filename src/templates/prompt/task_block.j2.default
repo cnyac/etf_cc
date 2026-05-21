@@ -12,8 +12,29 @@
   "unique_anomaly_analysis": "<200-500字 或 null>",
   "macro_cycle_anchor": {...} 或 null,
   "ticker_audits": {...},
+  "trading_discipline_review": [{code, logic_hardness, risk_reward_ratio, discipline_pass, review_note}, ...] 或 null,
   ...各人格字段（含 free_analysis ≤200 字，含可选 prev_session_audit；见下方 schema）
 }
+
+=== 易错字段强提醒（违反必返工） ===
+1. trading_discipline_review 必须是 **list[dict]**，每跨日候选品种一份；
+   若本时段无候选 → 填 null（**不是 {} 不是 ""**）。
+   每条字典必含：code / logic_hardness / risk_reward_ratio / discipline_pass / review_note
+
+2. actual_vs_expected（出现在 prev_session_audit 和 ticker_audits 里）的白名单 5 档：
+     ["强超于预期", "超于预期", "符合预期", "低于预期", "强低于预期"]
+   下列同义简写也接受（校验器会自动归一化为标准 5 档）：
+     强超 / 强超预期 / 大超预期 / 远超预期            → 强超于预期
+     超 / 超预期 / 略超预期                          → 超于预期
+     符合 / 如期                                     → 符合预期
+     低 / 略低 / 略低于预期 / 不及预期               → 低于预期
+     强低 / 强低预期 / 大幅低于 / 远低于预期         → 强低于预期
+
+3. ticker_audits[code].auditor 只能填：
+     yangjia / zhaolaoge / fengliu / discipline （**不可填 quant**，量化代审是 Python 的活）
+
+4. enum 字段（如 stage / intensity / market_phase 等）必须严格使用 schema 给出的白名单值，
+   不可创新词或用同义词替换。仅 actual_vs_expected 接受简写归一化（如上）。
 
 只返回 JSON，不要解释。
 {{ extra_top }}

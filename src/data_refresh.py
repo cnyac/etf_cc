@@ -35,6 +35,10 @@ def refresh_pool(market: Literal["A", "US"],
     if pool_path is None:
         pool_path = DEFAULT_POOL_A if market == "A" else DEFAULT_POOL_US
 
+    # 友好降级：yaml 不存在不要让 update_all 整批崩
+    if not os.path.exists(pool_path):
+        return True, f"{pool_path} 不存在，跳过补齐（请先在 GUI 池配置 tab 创建）"
+
     try:
         import etf_data_api as api  # type: ignore
     except Exception as e:

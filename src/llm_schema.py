@@ -35,6 +35,44 @@ ENUM_RISK_REWARD_RATIO = ["优", "中", "差"]
 ENUM_AUDIT_RATING = ["强超于预期", "超于预期", "符合预期", "低于预期", "强低于预期"]
 ENUM_AUDITOR = ["quant", "yangjia", "zhaolaoge", "fengliu", "discipline"]
 
+# 同义词归一化：LLM 常给的简写 → 标准 5 档。校验时先 normalize 再比对白名单；
+# merge_into_session 写回前也归一化（窗口里只存 5 档之一）。
+AUDIT_RATING_ALIASES = {
+    "强超于预期": "强超于预期",
+    "强超预期":   "强超于预期",
+    "强超":       "强超于预期",
+    "大超预期":   "强超于预期",
+    "远超预期":   "强超于预期",
+
+    "超于预期":   "超于预期",
+    "超预期":     "超于预期",
+    "超":         "超于预期",
+    "略超预期":   "超于预期",
+
+    "符合预期":   "符合预期",
+    "符合":       "符合预期",
+    "如期":       "符合预期",
+
+    "低于预期":   "低于预期",
+    "略低于预期": "低于预期",
+    "低":         "低于预期",
+    "略低":       "低于预期",
+    "不及预期":   "低于预期",
+
+    "强低于预期": "强低于预期",
+    "强低预期":   "强低于预期",
+    "强低":       "强低于预期",
+    "大幅低于":   "强低于预期",
+    "远低于预期": "强低于预期",
+}
+
+
+def normalize_audit_rating(value):
+    """LLM 简写 → 标准 5 档；不匹配返 None。"""
+    if not isinstance(value, str):
+        return None
+    return AUDIT_RATING_ALIASES.get(value.strip())
+
 # 顶层 strategy_outlook（任务 3.4）
 ENUM_MARKET_PHASE = ["情绪修复", "趋势主升", "高位分歧", "阴跌抵抗", "其他"]
 ENUM_TREND_FORECAST = ["上涨", "震荡", "下跌"]
