@@ -108,6 +108,30 @@ A 股引擎（4 字段）：
 
 此外 narrative 顶层加 `ticker_analyses: {code: text}`（每条 30-120 字）：LLM 从每分类挑 **1-2 个**（不是 3-4 个）最值得关注的品种写点评。`fill_narrative` 自动把 `ticker_analyses[code]` 回填到对应 `session.tickers[i].analysis`，HTML §3 表的"标签 / LLM 点评"列渲染。
 
+**阶段 B 人格扩职（2026-05-21）**：
+
+每个人格除原职责外承担额外任务：
+
+| 人格 | 原职责 | 扩职 |
+|---|---|---|
+| 养家 | 情绪周期 enum | + `panorama_text` 150-400 字 ≥3 段全景图 / `cross_validation_text` 跨板块联动 / `strategy_outlook` 6 子项策略定调 |
+| 赵老哥 | 上涨向流动性 | + `key_movers` ≥2 条上涨向板块异动解读 [{sector, phenomenon, motive, scenario}] |
+| 冯柳 | 下跌向逆向赔率 | + `key_movers` ≥2 条下跌向板块异动解读 |
+| 炒家（纪律） | 跨日候选纪律审查 | + `unique_anomaly_analysis` 独特异象追踪 / `strategy_outlook.risk_points` 风险点专项 / 周末 `macro_cycle_anchor` 联合署名 |
+
+新顶层 enum：`strategy_outlook` 含 `market_phase`（情绪修复/趋势主升/高位分歧/阴跌抵抗/其他）、`trend_forecast`（上涨/震荡/下跌）、`style_tone`（偏向进攻/偏向防守/混沌期）。
+
+**预期审计的双轨设计（2026-05-21）**：
+
+per-ticker `audit: {actual_vs_expected, auditor}` 字段，五档评级（强超/超/符合/低/强低于预期）：
+
+- **量化代审（auditor=quant）**：`build_snapshot` 跑完后调 `audit.quant_audit_batch` 兜底每只 ticker，D1 归类跃迁打分 + D2 量能配合打分加总映射五档。无上一时段则 None。
+- **人格代审（auditor=yangjia/zhaolaoge/fengliu/discipline）**：LLM 在 narrative.ticker_audits 字段里给少数 ticker 升级为人格审，`fill_narrative` 覆盖 quant 兜底。
+
+为什么双轨：渲染层每只品种都需要一个 audit badge（任务 2.2 要求），但 LLM 没法给 90 只品种逐只写论述。量化兜底解决"没人审"的空缺，人格审给重点品种升级语义。
+
+panel 级整体审被取消（养家 `panorama_text` 已用自然语言承载整盘判断）。
+
 ### 3.2 派生因子设计意图
 
 **问题**：仅看"今涨幅 / 昨涨幅 / 今成交额 / 昨成交额"信息密度太低，AI 会误判"超跌反弹 vs 主升开启"（仅看单日涨幅根本区分不了）。
@@ -226,6 +250,44 @@ from auto_prtsc.etf_data_api import fetch_etf_history, fetch_etf_wide_tables, fe
 - 双 0 → 持续强化（默认偏防御）
 
 **重要**：这条规则是用户经过讨论确定的，不要随意改。
+
+### 3.8 单时段分析 + 滚动渲染（阶段 A 拍板，2026-05-21）
+
+**问题**：旧版"每次合并 3 时段重写报告"导致 LLM 调用 3× 工作量；中间时段的叙事被反复重写违反不可变性。
+
+**解法**：
+
+- LLM 每个时段只写 **1 份** narrative，永远冻结
+- 渲染层（`render_html._build_groups`）从窗口取最近 3 个 narrative 拼成 §3 每品种 3 行展示
+- 跨日报告 = 滚动窗口里 3 个独立 narrative 在渲染时拼装
+
+**收益**：
+
+- LLM 工作量从 3× 降到 1×
+- 中间时段叙事不再被回头改，符合不可变性原则
+- §3.5/§6/§7 等"全景类内容"由当前 session 单独承载，不需要每日重写
+
+行为矩阵（A 股 / 美股 × 跑的时刻）写在 `src/report_gap.py` 顶部 docstring，决定每个时点 `update_all` 期望补哪些 label。
+
+### 3.9 数据更新两层缺口（阶段 6 拍板，2026-05-21）
+
+**问题**：早期 `update_all` 调 auto-prtsc 的 `gap_fill.fill_gaps()` 会扫全库 5000+ 标的，单次跑分钟级。
+
+**解法**：拆"数据层缺口"和"报告层缺口"两条独立流程：
+
+- **数据层**（`data_refresh.refresh_pool`）只调 auto-prtsc 暴露的池粒度 API（`etf_data_api.run_a_etf_daily_update(pool_path=...)` / `run_us_single_update(code)`），只补我们 90 只池子的切片
+- **报告层**（`report_gap.detect_report_gaps`）扫 `data/snapshots/<market>/` 对照交易日历列缺的 label
+
+底层全量 gap_fill 是 auto-prtsc 自己的季度任务，与 etf_cc 解耦。
+
+### 3.10 A 股 -午 时段的特殊性
+
+A 股盘中 `-午` label 的数据**无法历史回填**——切片永远是收盘后的全天日线，不存在"半天 amount"。两条强约束：
+
+- `build_snapshot` 在 `session_time="noon"` 且 `trade_date != today` 时 raise，禁止历史回填
+- `report_gap.expected_labels` 只在 end_date == today 且 `a_until in (None, "noon")` 时产 -午
+
+当日盘中（11:35-15:05）真正跑 `-午`：调 `etf_data_api.get_a_etf_realtime` 拉腾讯快照 append 到历史末尾后算 factors，`factors` 内部用 today_amount × 2 估算全天成交额。
 
 ---
 

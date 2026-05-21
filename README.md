@@ -1,8 +1,8 @@
 # etf_cc — A 股 + 美股量价分析自动化
 
-> **状态**：2026-05-20 需求封口 → 2026-05-21 阶段 1-5 实现完成 + 用户反馈已修复。剩阶段 6（数据更新汇总细节）+ 阶段 7（端到端联调）。
+> **状态**：2026-05-21 阶段 1-6 + A + B 实现完成；旧 docx 流水线归档；剩阶段 7（端到端真实 LLM 联调）。
 >
-> Git: https://github.com/cnyac/etf_cc · main · 113/113 测试通过
+> Git: https://github.com/cnyac/etf_cc · main · 170/170 测试通过
 
 > 🆕 **新会话冷启动**：按 §一"AI 阅读版"的顺序读 4 个文档（README → CLAUDE → DESIGN → REFACTOR_BRIEF），然后 `git log --oneline -5` 看最近做了什么 + `python -m pytest tests/` 验证环境。5 分钟上手。
 
@@ -38,16 +38,18 @@ A 股看 42 只 ETF 池，美股看 45 只权重股/ETF 池。每日产出独立
 | 阶段 | 模块 | 状态 |
 |---|---|---|
 | 1a/1b/1c | auto-prtsc 侧 ETF 管道 + `etf_data_api.py` 统一入口 | ✅ |
-| 2 | `src/factors.py`（7 因子 + 3 个 close_vs_ma 球）/ `src/panel.py` | ✅ |
+| 2 | `src/factors.py` / `src/panel.py`（含 breadth_alert） | ✅ |
 | 3 | `src/window.py` / `src/build_snapshot.py` / `src/sync_annotations.py` / `src/backfill.py` | ✅ |
 | 4 | `src/llm_schema.py` / `src/llm_validate.py` / `src/llm_prompt.py` / `src/gen_prompt.py` / `src/fill_narrative.py` | ✅ |
 | 5 | `src/render_html.py` / `src/templates/report.html.j2` / `src/color_palette.py` + 批注 JS | ✅ |
-| 6 | "数据更新汇总输出"细节 | ⏸ |
-| 7 | 端到端联调 + 旧代码归档 | 进行中 |
+| 6 | 数据更新汇总：`update_all` / `data_refresh` / `report_gap` / `log_util` | ✅ |
+| A | 极值预警 + §3 三行滚动渲染（不动 LLM） | ✅ |
+| B | 人格扩职 + 预期审计（`audit.py` + schema 扩字段 + §3.5/§6/§7） | ✅ |
+| 7 | 端到端联调（待真实 LLM narrative） | ⏸ |
 
-**测试覆盖**：113/113 passed（tests/ 11 个文件）
+**测试覆盖**：170/170 passed（tests/ 16 个文件）
 
-**旧 docx 流水线**仍在 `src/` 下（ingest.py / prepare_*.py / render_docx.py 等），但 `src/classify.py` 已被新架构复用（2026-05-21 用户批准"全局唯一最增/最缩"改动）。其它旧文件待最后归档到 `src/_archived/`。
+**旧 docx 流水线**已全量归档到 `src/_archived/`；`src/classify.py` 被新架构复用保留在 `src/`。模块布局见 §"开发者阅读版" 下的目录树。
 
 ## 任何时候不确定，停下来检索
 
@@ -75,57 +77,83 @@ A 股看 42 只 ETF 池，美股看 45 只权重股/ETF 池。每日产出独立
 
 > 你想要在这个项目里写代码（包括未来扩展功能），看这部分。
 
-## 仓库布局（重构后目标态）
+## 仓库布局（按模块分类）
 
 ```
 etf_cc/
-├── REFACTOR_BRIEF.md       # 需求决策记录（最详细）
-├── DESIGN.md               # 设计动机
-├── CLAUDE.md               # AI agent 工作指南
-├── README.md               # 本文件
+├── README.md / CLAUDE.md / DESIGN.md / REFACTOR_BRIEF.md   # 四份核心文档
+├── requirements.txt
 │
 ├── config/
 │   ├── pool_a.yaml         # A 股池清单（用户可编辑）
 │   └── pool_us.yaml        # 美股池清单（用户可编辑）
 │
-├── src/                    # （新架构完成态 ✅）
-│   ├── schema.py           # session/window 数据契约（注释 + 默认骨架）
+├── src/                    # 22 个新代码文件，按下方 6 层划分
+│   │
+│   │   ── A. 数据流水线 ─────────────────────────
+│   ├── update_all.py       # 一键入口：补底层切片 + 检测报告缺口 + 跑缺的 label
+│   ├── data_refresh.py     # 调 auto-prtsc 池粒度 API（只更新 90 只池子）
+│   ├── report_gap.py       # 报告层缺口检测 + 行为矩阵（A/US × 时刻）
+│   ├── build_snapshot.py   # 单时段生产（含 noon 实时 + quant audit 注入）
+│   ├── backfill.py         # 历史回填 + 骨架 narrative (is_skeleton=true)
+│   │
+│   │   ── B. 计算核心 ───────────────────────────
 │   ├── factors.py          # 7 因子 + close_vs_ma 三球 + 单一入口 compute_factors
 │   ├── classify.py         # 四象限归类 + 位置标签（分类内）+ 全局最增/最缩量
-│   ├── panel.py            # panel_breadth 跨品种聚合
-│   ├── window.py           # 滚动窗口状态机（load/save/append+弹出/remove/archive）
-│   ├── build_snapshot.py   # 单时段生产入口 (CLI)
-│   ├── sync_annotations.py # 从 HTML 解析批注 → 窗口 / 归档
-│   ├── backfill.py         # 历史回填 + 骨架 narrative
-│   ├── llm_schema.py       # 双引擎 schema + enum 白名单 + 长度约束
-│   ├── llm_prompt.py       # prompt 构造（短键压缩）
-│   ├── llm_validate.py     # 校验 + 校验降级 + merge_into_session
-│   ├── gen_prompt.py       # CLI：生成 prompt 到 stdout
-│   ├── fill_narrative.py   # CLI：校验 LLM JSON + 回填 session
-│   ├── color_palette.py    # 色板闭环（12 浅色默认 + merge）
-│   ├── render_html.py      # Jinja2 渲染 + sparkline 真数据注入
-│   ├── templates/
-│   │   └── report.html.j2  # 单文件自包含主模板（CSS/JS 全内联）
+│   ├── panel.py            # panel_breadth 聚合 + breadth_alert（±70% 共振）
+│   ├── audit.py            # per-ticker 量化代审（D1 归类跃迁 + D2 量能配合）
 │   │
-│   ├── ingest.py / prepare_*.py / render_docx.py / ...   # 旧 docx 流水线（待归档）
-│   └── _archived/          # 旧代码最终归档处
+│   │   ── C. 状态管理 ───────────────────────────
+│   ├── schema.py           # session/window 数据契约
+│   ├── window.py           # 滚动窗口（load/save/append+弹出/remove/archive）
+│   ├── sync_annotations.py # 从 HTML 解析 <script id="annotations"> 回写窗口
+│   │
+│   │   ── D. LLM 协作 ───────────────────────────
+│   ├── llm_schema.py       # 双引擎 schema + enum 白名单 + 长度约束 + 人格扩职
+│   ├── llm_prompt.py       # prompt 构造（短键压缩 + 审计上下文 + 周末标志）
+│   ├── llm_validate.py     # 校验 + 校验降级 + merge_into_session 覆盖 audit
+│   ├── gen_prompt.py       # CLI：生成 prompt → stdout
+│   ├── fill_narrative.py   # CLI：校验 LLM JSON + 回填 session
+│   │
+│   │   ── E. 渲染层 ─────────────────────────────
+│   ├── render_html.py      # Jinja2 渲染 + 三行滚动 + sparkline 真数据注入
+│   ├── color_palette.py    # 色板闭环（12 浅色默认 + merge）
+│   ├── templates/
+│   │   ├── report.html.j2  # 单文件自包含主模板（CSS/JS 全内联）
+│   │   └── _archived/      # 旧版 html.j2 模板
+│   │
+│   │   ── F. 工具 ───────────────────────────────
+│   ├── log_util.py         # 数据更新汇总 + 错误明细 JSON
+│   │
+│   └── _archived/          # 旧 docx 流水线（13 个文件，仅作历史参考，不被 import）
 │
 ├── data/
-│   ├── window/
-│   │   ├── pool_a.json     # A 股滚动窗口（max 40 时段）
-│   │   └── pool_us.json    # 美股滚动窗口（max 20 时段）
-│   ├── snapshots/
-│   │   ├── a/<label>.json  # A 股历史归档（永久保留）
-│   │   └── us/<label>.json # 美股历史归档
-│   ├── reports/
-│   │   ├── a/<label>.html  # A 股报告
-│   │   └── us/<label>.html # 美股报告
+│   ├── window/             # pool_a.json / pool_us.json 滚动窗口
+│   ├── snapshots/          # a/<label>.json / us/<label>.json 永久归档
+│   ├── reports/            # a/<label>.html / us/<label>.html
 │   └── logs/
-│       ├── update_<ts>.log         # 数据更新日志
+│       ├── update_<ts>.log         # 数据更新汇总
 │       └── errors/<ts>_<ticker>.json # 失败明细（AI 可复查）
 │
-└── tests/                   # 单元测试 + 端到端测试
+├── docs/
+│   └── _archived/
+│       └── prompts/        # 旧 docx 时代提示词（参考用）
+│
+└── tests/                  # 16 个 test_ 文件，170 个 case
 ```
+
+### 模块依赖关系（高→低）
+
+```
+update_all → data_refresh / report_gap / build_snapshot
+build_snapshot → ingest(等价 etf_data_api) → factors → classify → panel → audit → window
+gen_prompt → llm_prompt → llm_schema
+fill_narrative → llm_validate → window
+render_html → window → templates/report.html.j2
+sync_annotations → window
+```
+
+工具层（log_util / color_palette / schema）被多处复用。
 
 ## 外部依赖
 
@@ -164,7 +192,12 @@ etf_cc/
 ## 命令速查
 
 ```bash
-# 单时段生产（含 ingest→factors→classify→panel→入窗口+归档）
+# 一键数据更新（推荐：补底层切片 + 跑报告缺口）
+python -m src.update_all                    # A + US 全跑，lookback 7 天
+python -m src.update_all --markets A        # 只 A 股
+python -m src.update_all --skip-refresh     # 跳过底层补齐
+
+# 单时段生产（手动指定 label）
 python -m src.build_snapshot --market A --label 2026-05-20-收 --session close
 
 # 历史回填（含骨架 narrative）
@@ -186,19 +219,19 @@ python -m src.sync_annotations --market A
 python -m pytest tests/
 ```
 
-## 实施工作流（7 阶段 ≈ 11 天）
+## 实施工作流
 
-| 阶段 | 工作 | 估时 | 依赖 | 状态 |
-|---|---|---|---|---|
-| 1a | auto-prtsc 侧 A 股 ETF 管道 | 1 天 | — | ✅ |
-| 1b | auto-prtsc 侧补美股 high/low 宽表 | 0.5 天 | — | ✅（用 Detail 长表代替 pivot） |
-| 1c | etf_data_api.py 统一 API | 0.5 天 | 1a, 1b | ✅ |
-| 2 | etf_cc factors.py / panel.py | 1.5 天 | 1c | ✅ |
-| 3 | 滚动窗口状态机（双市场） | 2 天 | 2 | ✅ |
-| 4 | LLM prompt 双引擎 + schema 校验 | 1.5 天 | 3 | ✅ |
-| 5 | HTML 渲染（双独立报告） | 2.5 天 | 4 | ✅ |
-| 6 | backfill + 池配置 + 数据更新汇总 | 1 天 | 3, 5 | ⏸ 部分（数据更新汇总细节待补） |
-| 7 | 端到端联调 + 文档 | 0.5 天 | all | 进行中 |
+| 阶段 | 工作 | 状态 |
+|---|---|---|
+| 1a-1c | auto-prtsc 侧 ETF 管道 + etf_data_api 统一入口 | ✅ |
+| 2 | factors.py / panel.py | ✅ |
+| 3 | 滚动窗口状态机（双市场） | ✅ |
+| 4 | LLM prompt 双引擎 + schema 校验 | ✅ |
+| 5 | HTML 渲染（双独立报告） | ✅ |
+| 6 | 数据更新汇总 + 错误日志结构化 | ✅ |
+| A | 极值预警 + §3 三行滚动渲染 | ✅ |
+| B | 人格扩职（养家/赵老哥/冯柳/炒家扩 4 项任务）+ 预期审计 + 周末宏观 | ✅ |
+| 7 | 端到端联调（需真实 LLM 跑一次） | ⏸ |
 
 ---
 

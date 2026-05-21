@@ -41,19 +41,21 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 
 # 项目当前状态（重要）
 
-**2026-05-20 完成需求面封口；2026-05-21 阶段 1-5 全部实现完成 + 用户反馈修复**。
+**2026-05-20 完成需求面封口；2026-05-21 阶段 1-6 + A + B 全部实现完成 + 旧 docx 已归档**。
 
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | 1a/1b/1c | auto-prtsc ETF 管道 + etf_data_api 单一入口 | ✅ |
-| 2 | factors.py（7+3 三球）/ panel.py | ✅ |
+| 2 | factors.py（7+3 三球）/ panel.py（含 breadth_alert） | ✅ |
 | 3 | 滚动窗口状态机 + build_snapshot + sync_annotations + backfill | ✅ |
 | 4 | 双引擎 schema + 校验 + prompt 构造 + fill_narrative CLI | ✅ |
 | 5 | HTML 渲染 + 色板 + 批注交互 JS | ✅ |
-| 6 | backfill 已包含 + 池配置已建 → 剩"数据更新汇总输出"细节 | ⏸ |
-| 7 | 端到端联调 + 文档收口 | 进行中 |
+| 6 | 数据更新汇总（update_all / data_refresh / report_gap / log_util） | ✅ |
+| A | §0 极值共振预警 + §3 每品种 3 行滚动渲染（不动 LLM） | ✅ |
+| B | 人格扩职 + audit.py 量化代审 + 周末 macro_cycle_anchor | ✅ |
+| 7 | 端到端真实 LLM 联调 | ⏸ |
 
-旧 docx 流水线仍在 `src/`（ingest.py / classify.py / prepare_*.py / render_docx.py 等），**`classify.py` 现在已被新架构复用**（用户 2026-05-21 批准了"全局唯一一对最增/最缩量"改动）。其它旧文件待最后归档。
+旧 docx 流水线（11 个文件）已全量归档到 `src/_archived/`；`src/classify.py` 被新架构复用，保留在 `src/`。模块布局见 README §二。
 
 - **本轮重构的所有决策详见** `REFACTOR_BRIEF.md`
 - **设计动机和不要做什么详见** `DESIGN.md`
@@ -229,11 +231,13 @@ A 股版：up/down/flat_count + strong_up/down_count + vol_expansion/contraction
 
 ---
 
-# 旧工作流（遗留，将被替换）
+# 旧工作流（已归档）
 
-旧版 `src/prepare_single.py` / `prepare_merge.py` / `render_docx.py` / `render_merge_docx.py` 在重构期间仍可用，但**不要在新代码里依赖**。新数据流水线建好后这些将被弃用并归档到 `src/_archived/`。
+旧 docx 流水线（`ingest.py` / `prepare_*.py` / `render_docx*.py` / `merge.py` / `parse_annotation.py` / `trajectory.py` / `launcher.py` / `run.py`，共 11 个）**已归档到 `src/_archived/`**，不被新代码 import，不要在新代码里依赖。
 
-旧的 `prompts/*.md` 是单时段/合并分析的历史提示词，**保留作为风格参考**，不必每次读全文。新双引擎 schema 取代它们成为定性输出的契约。
+旧 `prompts/*.md`（单时段/合并分析的历史提示词）归档到 `docs/_archived/prompts/`，**保留作为风格参考**，不必每次读全文。新双引擎 schema 取代它们成为定性输出的契约。
+
+旧 `templates/*.html.j2` 归档到 `src/templates/_archived/`；新版唯一模板是 `src/templates/report.html.j2`。
 
 ---
 
@@ -244,19 +248,39 @@ A 股版：up/down/flat_count + strong_up/down_count + vol_expansion/contraction
 | 某个决策为什么这样定的 | `REFACTOR_BRIEF.md` 检索关键词 |
 | 设计动机 / 不要做什么 | `DESIGN.md` |
 | 我作为 AI 怎么干活 | 本文件（CLAUDE.md） |
-| 项目入口介绍 | `README.md` |
+| 项目入口介绍 + 模块分类目录树 | `README.md` §二 |
 | 双引擎字段 schema 细节 | `src/llm_schema.py`（实现）/ `REFACTOR_BRIEF.md` 4.3 / 4.9.6 节（决策来源） |
 | 因子数学定义 | `src/factors.py`（实现）/ `REFACTOR_BRIEF.md` 4.4a 节 |
 | 数据源 + auto-prtsc 集成 | `D:\git\auto prtsc\docs\ETF_PIPELINE.md` / `REFACTOR_BRIEF.md` 4.6 节 |
 | 池配置 yaml 格式 | `config/pool_a.yaml`（实物）/ `REFACTOR_BRIEF.md` 4.9.3 节 |
 | HTML 视觉规范 | `src/templates/report.html.j2`（实物 CSS）/ `REFACTOR_BRIEF.md` 5.3 节 |
 | 滚动窗口 schema | `src/schema.py` |
+| 预期审计量化公式（D1+D2） | `src/audit.py`（实现）/ `REFACTOR_BRIEF.md` 阶段 B 章节 |
+| 数据更新行为矩阵 | `src/report_gap.py` 顶部 docstring |
 | auto-prtsc 项目结构 | `F:\obsidian\Vault\Projects\形态复盘引擎-数据基础设施.md` |
+
+# 模块分层（22 个 .py 按 6 层划分）
+
+```
+A. 数据流水线  update_all / data_refresh / report_gap / build_snapshot / backfill
+B. 计算核心    factors / classify / panel / audit
+C. 状态管理    window / schema / sync_annotations
+D. LLM 协作    llm_schema / llm_prompt / llm_validate / gen_prompt / fill_narrative
+E. 渲染层      render_html / color_palette / templates/report.html.j2
+F. 工具        log_util
+```
+
+工作时按层定位文件 → 找代码 → 改动；不跨层乱引用。
 
 # 常用命令
 
 ```bash
-# 单时段生产
+# 一键数据更新（推荐：自动检测缺口 + 补齐）
+python -m src.update_all                    # A + US 全跑
+python -m src.update_all --markets A        # 只 A 股
+python -m src.update_all --skip-refresh     # 跳过 auto-prtsc 底层补齐
+
+# 单时段生产（手动指定 label）
 python -m src.build_snapshot --market A --label 2026-05-20-收 --session close
 
 # 历史回填（含骨架 narrative）

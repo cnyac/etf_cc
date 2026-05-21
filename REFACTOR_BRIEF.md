@@ -813,9 +813,109 @@ SH510210 上证指数ETF      SH510150 消费ETF           SH510050 上证50ETF
 | 每个分类挑 **3-4 个** 写分析 | 每个分类挑 **1-2 个** 写点评 |
 | 没选中的 analysis 留空字符串 | 没选中的 ticker_analyses 中**不出现** |
 
-### 7.4 剩余工作
+### 7.4 阶段 6 数据更新汇总（2026-05-21 完成）
 
-- 阶段 6 "数据更新汇总输出"细节（错误日志归档结构化）
-- 阶段 7 端到端联调
-- 旧 docx 流水线归档到 `src/_archived/`
+四个新模块串起一键数据更新流程：
+
+| 模块 | 职责 |
+|---|---|
+| `src/log_util.py` | `write_error`/`write_run_summary` 落盘 `data/logs/update_<ts>.log` + `errors/<ts>_<ticker>.json` |
+| `src/data_refresh.py` | 调 auto-prtsc 池粒度 API（`run_a_etf_daily_update` / `run_us_single_update`）只补 90 只池子，不动 auto-prtsc 全库 |
+| `src/report_gap.py` | 扫 `data/snapshots/<market>/` 对照交易日历列出缺的 label；`default_end` + a_until 三态决定每个时点期望补什么 |
+| `src/update_all.py` | 一键入口：`refresh_data → detect_report_gaps → build_snapshot 逐 label → write_run_summary` |
+
+行为矩阵（写在 `report_gap.py` docstring）：
+
+| 市场 | 跑的时刻 | end_date | a_until | 补什么 |
+|---|---|---|---|---|
+| A | 开盘前/周末/节假日 | 上一交易日 | close | 历史 -收 |
+| A | 11:35-15:05 | 今天 | noon | 历史 -收 + 今日 -午（腾讯实时快照） |
+| A | 15:05 后 | 今天 | None | 历史 -收 + 今日 -午+-收 |
+| US | 北京 ≥ 5:30 | 最近美股交易日 | — | 该日 1 个 label |
+| US | 北京 < 5:30 | 再前一日 | — | 该日 1 个 label |
+
+`build_snapshot.build()` 增 `failures_out` / `run_ts` 参数 + 单只 ticker try/except；A 股 `session_time="noon"` 路径走 `etf_data_api.get_a_etf_realtime` 拉腾讯快照，禁止历史日 + noon 组合。
+
+### 7.5 阶段 A 渲染层（2026-05-21 完成）
+
+**核心架构**：单时段分析 + 滚动渲染。LLM 每个时段只产 1 份 narrative 永远冻结；渲染层（`render_html._build_groups`）从 `history[-2:] + current` 拼每只 ETF 1-3 行。LLM 工作量从 3× 降到 1×。
+
+具体改动：
+
+- `panel.breadth_alert`: up/down ≥70% → `bullish_resonance` / `bearish_resonance`
+- 模板 §0 顶部告警条（红=起爆，深蓝=杀跌）
+- 模板 `category_table` 11 列含 rowspan：代码/名称/批注 跨整组；时段/涨幅/差值/量能/价位/均线/标签+点评/预期审计 逐行
+- 行背景色 = `annotation.color`（B 批注色染该品种 3 行）
+- §3 预期审计列：阶段 A 渲染占位（"—"），阶段 B 接通 audit 数据
+- `_pick_tracking_codes` 新规则：上一时段非纯最增/缩 + 独特品种 + 兜底
+
+### 7.6 阶段 B 人格扩职 + 预期审计（2026-05-21 完成）
+
+#### 7.6.1 人格分工（A 股）
+
+| 章节 | 人格 | 字段 |
+|---|---|---|
+| §6.1 全景图 ≥3 段 | 养家 | `yangjia_emotion_cycle.panorama_text` 150-400 字 |
+| §6.3 交叉验证 | 养家 | `yangjia_emotion_cycle.cross_validation_text` 100-300 字 |
+| §6.2 上涨向异动 ≥2 | 赵老哥 | `zhaolaoge_liquidity_focus.key_movers` list[{sector, phenomenon, motive, scenario}] |
+| §6.2 下跌向异动 ≥2 | 冯柳 | `fengliu_contrarian_check.key_movers` |
+| §6.4 策略前瞻 6 子项 | 养家 | 顶层 `strategy_outlook.{market_phase, trend_forecast, style_tone, attack_direction, retreat_direction, key_focus}` |
+| §6.4 风险点专项 | 炒家 | 顶层 `strategy_outlook.risk_points` |
+| §3.5 独特异象追踪 | 炒家 | 顶层 `unique_anomaly_analysis` 200-500 字 或 null |
+| §7 周末宏观 | 养家+炒家 | 顶层 `macro_cycle_anchor`（仅 `is_weekend_close=true` 必填）|
+
+新顶层 enum：
+
+- `market_phase`: 情绪修复 / 趋势主升 / 高位分歧 / 阴跌抵抗 / 其他
+- `trend_forecast`: 上涨 / 震荡 / 下跌
+- `style_tone`: 偏向进攻 / 偏向防守 / 混沌期
+
+#### 7.6.2 预期审计（任务 2.2）
+
+per-ticker `audit: {actual_vs_expected, auditor}` 五档评级（强超/超/符合/低/强低于预期），双轨：
+
+**量化代审（`src/audit.py`）**：
+
+- D1 归类跃迁打分表（强反转→持续强化 +3、连续杀跌→反包修复 +2、持续强化→持续强化 +1、持续强化→强反转 -2、强反转→连续杀跌 -2 等）
+- D2 量能配合：涨+放量 +1 / 涨+缩量 -1 / 跌+放量 -1 / 跌+缩量 +1
+- 总分映射五档：≥+3 强超 / +1~+2 超 / 0 符合 / -1~-2 低 / ≤-3 强低
+- `build_snapshot` 跑完调 `quant_audit_batch` 兜底每只 ticker
+- 上一时段缺失 / code 在上一时段不存在 → audit=None（渲染 "—"）
+
+**人格代审**：LLM 在 `narrative.ticker_audits: {code: {actual_vs_expected, auditor}}` 给少数 ticker 升级；`fill_narrative` 覆盖 quant 兜底。`auditor` 不允许填 `"quant"`（那是 Python 的活）。
+
+panel 级整体审取消（养家 panorama_text 用自然语言承载整盘判断）。
+
+#### 7.6.3 渲染映射
+
+- 模板 `persona_card` 扩 panorama / cross_validation / key_movers / prev_session_audit 子段
+- §3.5 独特异象：橘色 anomaly-card
+- §6 策略前瞻：strategy-grid 7 子项（market_phase / trend_forecast 上色 + 风险点警告色）
+- §7 宏观周期：仅 `is_weekend_close` 时显示，灰色 macro-card 含 4 子段
+
+#### 7.6.4 prompt 增量
+
+- `_audit_context_block`：把 history[-1] 的人格 `next_session_expect` 打包成审计锚点
+- `_weekend_flag_block`：根据 `session.is_weekend_close` 明确告诉 LLM 是否必填 macro_cycle_anchor
+- 任务 schema 段加新字段 schema 描述 + key_movers / strategy_outlook / unique_anomaly / macro_cycle_anchor 结构示意
+
+### 7.7 旧 docx 流水线归档（2026-05-21 完成）
+
+`src/` 下 11 个旧文件归档到 `src/_archived/`：`ingest.py` / `launcher.py` / `merge.py` / `parse_annotation.py` / `prepare_merge.py` / `prepare_single.py` / `render_docx.py` / `render_merge.py` / `render_merge_docx.py` / `run.py` / `trajectory.py`。
+
+根级 `templates/` 合并到 `src/templates/_archived/`；`prompts/` 移到 `docs/_archived/prompts/`；`launch.bat` 移到 `src/_archived/`。`src/classify.py` 因被新架构复用保留在 `src/`。新代码 0 处 import 旧文件。
+
+### 7.8 测试统计
+
+113（阶段 1-5 末）→ 170（阶段 6+A+B 末）。新增 16 个 test 文件中的：
+
+- `test_audit.py` 19 cases（D1/D2/五档映射/batch）
+- `test_log_util.py` 3 cases
+- `test_report_gap.py` 11 cases（行为矩阵）
+- `test_build_snapshot_noon.py` 3 cases（noon 路径 + 周末标志）
+- 各扩字段在 `test_llm_validate.py` / `test_llm_prompt.py` / `test_panel.py` / `test_render_html.py` 加增量覆盖
+
+### 7.9 剩余工作
+
+- 阶段 7 端到端真实 LLM 联调（找一个时点把 prompt 喂给 Claude，看 narrative 校验/渲染是否真通）
 - README §三"用户阅读版"补内容
