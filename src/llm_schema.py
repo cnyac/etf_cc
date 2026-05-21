@@ -31,6 +31,15 @@ ENUM_MA_RELATION = ["站上30周均线", "跌破30周均线", "围绕30周均线
 ENUM_LOGIC_HARDNESS = ["硬", "软", "牵强"]
 ENUM_RISK_REWARD_RATIO = ["优", "中", "差"]
 
+# 预期审计（任务 2.2）
+ENUM_AUDIT_RATING = ["强超于预期", "超于预期", "符合预期", "低于预期", "强低于预期"]
+ENUM_AUDITOR = ["quant", "yangjia", "zhaolaoge", "fengliu", "discipline"]
+
+# 顶层 strategy_outlook（任务 3.4）
+ENUM_MARKET_PHASE = ["情绪修复", "趋势主升", "高位分歧", "阴跌抵抗", "其他"]
+ENUM_TREND_FORECAST = ["上涨", "震荡", "下跌"]
+ENUM_STYLE_TONE = ["偏向进攻", "偏向防守", "混沌期"]
+
 # 跨资产维度名（panel.cross_asset_state 的 key）
 A_CROSS_ASSET_DIMS = ["treasury_10y", "treasury_30y", "gold", "oil"]
 US_CROSS_ASSET_DIMS = ["treasury_10y", "treasury_30y", "dollar", "gold",
@@ -51,15 +60,22 @@ A_SCHEMA = {
         },
         "required": ["stage", "intensity", "evidence",
                      "next_session_expect", "what_kills_this_view",
-                     "free_analysis"],
-        "nullable": True,  # 候选 0 时整字段可为 null
+                     "free_analysis",
+                     "panorama_text",        # 任务 3.1 全景图 ≥3 段
+                     "cross_validation_text" # 任务 3.3 交叉验证
+                     ],
+        "optional": ["prev_session_audit"],  # 任务 2.2，{rating, audit_note} 或 null
+        "nullable": True,
     },
     "zhaolaoge_liquidity_focus": {
         "scope": "category:持续强化+反包修复",
         "enums": {"liquidity_signal": ENUM_LIQUIDITY_SIGNAL},
         "required": ["anchor_etfs", "liquidity_signal", "evidence",
                      "follow_strategy", "what_kills_this_view",
-                     "free_analysis"],
+                     "free_analysis",
+                     "key_movers"   # 任务 3.2 上涨向异动板块 ≥2 条
+                     ],
+        "optional": ["prev_session_audit"],
         "nullable": True,
     },
     "fengliu_contrarian_check": {
@@ -67,7 +83,10 @@ A_SCHEMA = {
         "enums": {"contrarian_grade": ENUM_CONTRARIAN_GRADE},
         "required": ["anchor_etfs", "contrarian_grade", "evidence",
                      "left_side_window", "what_kills_this_view",
-                     "free_analysis"],
+                     "free_analysis",
+                     "key_movers"   # 任务 3.2 下跌向异动板块 ≥2 条
+                     ],
+        "optional": ["prev_session_audit"],
         "nullable": True,
     },
     "trading_discipline_review": {
@@ -79,7 +98,7 @@ A_SCHEMA = {
         "required": ["logic_hardness", "risk_reward_ratio",
                      "discipline_pass", "review_note"],
         # rating_override 可选，但 discipline_pass=false 时若要保留/上调评级需填
-        "optional": ["rating_override"],
+        "optional": ["rating_override", "prev_session_audit"],
         "nullable": True,
     },
 }
@@ -140,6 +159,50 @@ US_SCHEMA = {
 }
 
 
+# ============ 顶层（非人格）字段 schema ============
+# 这些字段不属于任何单个人格，由 LLM 综合产出或多人格联合署名。
+
+# strategy_outlook：任务 3.4 七子项策略前瞻
+# 责任划分：6 子项养家定调，risk_points 由炒家专项
+STRATEGY_OUTLOOK_SCHEMA = {
+    "enums": {
+        "market_phase": ENUM_MARKET_PHASE,
+        "trend_forecast": ENUM_TREND_FORECAST,
+        "style_tone": ENUM_STYLE_TONE,
+    },
+    "required": ["market_phase", "trend_forecast", "style_tone",
+                 "attack_direction", "retreat_direction", "key_focus",
+                 "risk_points"],
+    "nullable": True,
+}
+
+# unique_anomaly_analysis：任务 2.3 独特异象追踪（炒家写）
+UNIQUE_ANOMALY_LEN = (200, 500)   # 字数区间
+
+# macro_cycle_anchor：任务 4 周末宏观周期（仅周末必填）
+MACRO_CYCLE_SCHEMA = {
+    "required": ["asset_profile", "historical_anchor",
+                 "then_vs_now", "forward_strategy"],
+    "sub_required": {
+        "historical_anchor": ["year", "event", "phase", "brief"],
+        "then_vs_now": ["similarity", "divergence"],
+        "forward_strategy": ["risks", "opportunities"],
+    },
+    "nullable": True,  # 非周末时整体 null
+}
+
+# ticker_audits：任务 2.2 LLM 给少数 ticker 升级为人格审；
+# 其它由 build_snapshot 已用 audit.quant_audit_batch 兜底。
+# 形如 {code: {actual_vs_expected, auditor}}；fill_narrative 时覆盖 quant 结果。
+TICKER_AUDIT_SCHEMA = {
+    "enums": {
+        "actual_vs_expected": ENUM_AUDIT_RATING,
+        "auditor": ENUM_AUDITOR,
+    },
+    "required": ["actual_vs_expected", "auditor"],
+}
+
+
 def get_schema(market: str) -> dict:
     if market == "A":
         return A_SCHEMA
@@ -152,9 +215,20 @@ def get_schema(market: str) -> dict:
 #   - is_skeleton: bool (Python backfill 时 True；LLM 写满后 False)
 #   - session_summary: str (~100 字，含风格判断 + 主线锚定 + 预期推演 + 风险提示)
 #   - ticker_analyses: {code: text}  每分类挑 1-2 个重点品种写 50-100 字点评
+#   - strategy_outlook: dict | null  任务 3.4 七子项（养家+炒家分工）
+#   - unique_anomaly_analysis: str | null  任务 2.3 独特异象（炒家写，无独特品种 → null）
+#   - macro_cycle_anchor: dict | null  任务 4 周末宏观（非周末 → null）
+#   - ticker_audits: {code: {actual_vs_expected, auditor}}  少数 ticker 升级人格审
 TOP_LEVEL_REQUIRED = ["is_skeleton", "session_summary"]
+TOP_LEVEL_OPTIONAL = ["strategy_outlook", "unique_anomaly_analysis",
+                      "macro_cycle_anchor", "ticker_analyses", "ticker_audits"]
 
 # 长度约束
 FREE_ANALYSIS_MAX = 200
 TICKER_ANALYSIS_MIN = 30
 TICKER_ANALYSIS_MAX = 120
+PANORAMA_LEN = (150, 400)
+CROSS_VALIDATION_LEN = (100, 300)
+AUDIT_NOTE_MAX = 80
+KEY_MOVERS_MIN = 2  # 赵老哥 / 冯柳 各 ≥2 条
+KEY_MOVER_REQUIRED = ["sector", "phenomenon", "motive", "scenario"]

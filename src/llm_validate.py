@@ -18,6 +18,12 @@ from src.llm_schema import (
     get_schema, TOP_LEVEL_REQUIRED,
     A_CROSS_ASSET_DIMS, US_CROSS_ASSET_DIMS, MINERVINI_BREADTH_FIELDS,
     FREE_ANALYSIS_MAX, TICKER_ANALYSIS_MIN, TICKER_ANALYSIS_MAX,
+    PANORAMA_LEN, CROSS_VALIDATION_LEN, AUDIT_NOTE_MAX,
+    KEY_MOVERS_MIN, KEY_MOVER_REQUIRED,
+    ENUM_AUDIT_RATING, ENUM_AUDITOR,
+    ENUM_MARKET_PHASE, ENUM_TREND_FORECAST, ENUM_STYLE_TONE,
+    STRATEGY_OUTLOOK_SCHEMA, MACRO_CYCLE_SCHEMA, UNIQUE_ANOMALY_LEN,
+    TICKER_AUDIT_SCHEMA,
 )
 
 # 维度名 → 中文别名（LLM 写 evidence 时可能用中文）
@@ -54,12 +60,65 @@ def _check_enum(field_name: str, value, enum_list: list, errors: list) -> None:
 def _check_required(field_data: dict, required_keys: Iterable[str],
                     field_label: str, errors: list) -> None:
     for k in required_keys:
-        if k not in field_data or field_data[k] in (None, ""):
-            errors.append(f"{field_label}.{k} 必填但缺失/空")
+        # key_movers / 子 list 等允许 [] / 但要在专项里查
+        if k not in field_data:
+            errors.append(f"{field_label}.{k} 必填但缺失")
+            continue
+        v = field_data[k]
+        if v in (None, "") or (isinstance(v, list) and not v):
+            errors.append(f"{field_label}.{k} 必填但空")
     # free_analysis 长度上限
     fa = field_data.get("free_analysis")
     if fa and isinstance(fa, str) and len(fa) > FREE_ANALYSIS_MAX:
         errors.append(f"{field_label}.free_analysis 超过 {FREE_ANALYSIS_MAX} 字（当前 {len(fa)} 字）")
+
+
+def _check_length_range(text: str | None, lo_hi: tuple[int, int],
+                        label: str, errors: list) -> None:
+    if not text:
+        return  # 空由 _check_required 报；此处只查长度
+    n = len(text)
+    lo, hi = lo_hi
+    if n < lo or n > hi:
+        errors.append(f"{label} 长度 {n} 不在 [{lo}, {hi}] 区间")
+
+
+def _validate_prev_audit(field: dict, label: str, errors: list) -> None:
+    """各人格字段下的 prev_session_audit 子节（可选）。
+    schema: {actual_vs_expected: enum 五档, audit_note: ≤80字} 或 null。
+    """
+    pa = field.get("prev_session_audit")
+    if pa is None:
+        return
+    if not isinstance(pa, dict):
+        errors.append(f"{label}.prev_session_audit 应为 dict 或 null")
+        return
+    rating = pa.get("actual_vs_expected")
+    if rating not in ENUM_AUDIT_RATING:
+        errors.append(f"{label}.prev_session_audit.actual_vs_expected={rating!r} 不在白名单 {ENUM_AUDIT_RATING}")
+    note = pa.get("audit_note", "")
+    if note and len(note) > AUDIT_NOTE_MAX:
+        errors.append(f"{label}.prev_session_audit.audit_note 超 {AUDIT_NOTE_MAX} 字")
+
+
+def _validate_key_movers(field: dict, label: str, errors: list) -> None:
+    """赵老哥 / 冯柳 / wyckoff / weinstein 的 key_movers list。
+    每条 {sector, phenomenon, motive, scenario} 全必填；list 长度 ≥KEY_MOVERS_MIN。"""
+    movers = field.get("key_movers")
+    if movers is None:
+        return  # 必填错误已由 _check_required 报
+    if not isinstance(movers, list):
+        errors.append(f"{label}.key_movers 应为 list")
+        return
+    if len(movers) < KEY_MOVERS_MIN:
+        errors.append(f"{label}.key_movers 至少 {KEY_MOVERS_MIN} 条（当前 {len(movers)}）")
+    for i, m in enumerate(movers):
+        if not isinstance(m, dict):
+            errors.append(f"{label}.key_movers[{i}] 应为 dict")
+            continue
+        for k in KEY_MOVER_REQUIRED:
+            if not m.get(k):
+                errors.append(f"{label}.key_movers[{i}].{k} 必填")
 
 
 def _count_dim_mentions(text: str, aliases: dict[str, list[str]]) -> int:
@@ -194,6 +253,72 @@ def _validate_discipline(reviews, market: str, errors: list) -> None:
                 errors.append(f"{label}.rating_override.reason 超 30 字")
 
 
+def _validate_strategy_outlook(so, errors: list) -> None:
+    """任务 3.4 七子项 enum + 必填检查。"""
+    if so is None:
+        return
+    if not isinstance(so, dict):
+        errors.append("strategy_outlook 应为 dict 或 null")
+        return
+    _check_required(so, STRATEGY_OUTLOOK_SCHEMA["required"], "strategy_outlook", errors)
+    for enum_key, enum_list in STRATEGY_OUTLOOK_SCHEMA["enums"].items():
+        if enum_key in so:
+            _check_enum(f"strategy_outlook.{enum_key}", so.get(enum_key), enum_list, errors)
+    # risk_points / key_focus 应为 list[str]
+    for k in ("risk_points", "key_focus"):
+        v = so.get(k)
+        if v is not None and not isinstance(v, list):
+            errors.append(f"strategy_outlook.{k} 应为 list[str]")
+
+
+def _validate_unique_anomaly(text, errors: list) -> None:
+    """任务 2.3 独特异象（炒家）：null（无独特品种）或 200-500 字。"""
+    if text is None:
+        return
+    if not isinstance(text, str):
+        errors.append("unique_anomaly_analysis 应为字符串或 null")
+        return
+    _check_length_range(text, UNIQUE_ANOMALY_LEN, "unique_anomaly_analysis", errors)
+
+
+def _validate_macro_cycle(mc, is_weekend_close: bool, errors: list) -> None:
+    """任务 4 周末宏观：周末必填四子段；非周末必为 null。"""
+    if mc is None:
+        if is_weekend_close:
+            errors.append("macro_cycle_anchor 在周末收盘时必填（is_weekend_close=true）")
+        return
+    if not isinstance(mc, dict):
+        errors.append("macro_cycle_anchor 应为 dict 或 null")
+        return
+    _check_required(mc, MACRO_CYCLE_SCHEMA["required"], "macro_cycle_anchor", errors)
+    for parent, subs in MACRO_CYCLE_SCHEMA["sub_required"].items():
+        sub = mc.get(parent)
+        if isinstance(sub, dict):
+            _check_required(sub, subs, f"macro_cycle_anchor.{parent}", errors)
+
+
+def _validate_ticker_audits(audits, errors: list) -> None:
+    """LLM 给少数 ticker 升级为人格审：{code: {actual_vs_expected, auditor}}。"""
+    if audits is None:
+        return
+    if not isinstance(audits, dict):
+        errors.append("ticker_audits 应为 dict 或 null")
+        return
+    for code, a in audits.items():
+        if not isinstance(a, dict):
+            errors.append(f"ticker_audits[{code}] 应为 dict")
+            continue
+        rating = a.get("actual_vs_expected")
+        if rating not in ENUM_AUDIT_RATING:
+            errors.append(f"ticker_audits[{code}].actual_vs_expected={rating!r} 不在白名单")
+        auditor = a.get("auditor")
+        if auditor not in ENUM_AUDITOR:
+            errors.append(f"ticker_audits[{code}].auditor={auditor!r} 不在白名单")
+        if auditor == "quant":
+            errors.append(f"ticker_audits[{code}].auditor=quant 不允许（量化审由 build_snapshot 兜底，"
+                          "LLM 提供的必须是人格审）")
+
+
 def _validate_ticker_analyses(ta, errors: list) -> None:
     """ticker_analyses: {code: text}，每条 30-120 字。"""
     if ta is None:
@@ -213,8 +338,13 @@ def _validate_ticker_analyses(ta, errors: list) -> None:
 
 
 def validate_narrative(narrative: dict, market: str,
-                       panel: dict | None = None) -> tuple[bool, list[str]]:
-    """校验 LLM 写完的 narrative。返回 (ok, errors)。"""
+                       panel: dict | None = None,
+                       is_weekend_close: bool = False) -> tuple[bool, list[str]]:
+    """校验 LLM 写完的 narrative。返回 (ok, errors)。
+
+    is_weekend_close: 是否为周末收盘（来自 session.is_weekend_close），决定
+    macro_cycle_anchor 是否必填。
+    """
     errors: list[str] = []
     if not isinstance(narrative, dict):
         return False, ["narrative 不是 dict"]
@@ -228,6 +358,10 @@ def validate_narrative(narrative: dict, market: str,
         return len(errors) == 0, errors
 
     _validate_ticker_analyses(narrative.get("ticker_analyses"), errors)
+    _validate_strategy_outlook(narrative.get("strategy_outlook"), errors)
+    _validate_unique_anomaly(narrative.get("unique_anomaly_analysis"), errors)
+    _validate_macro_cycle(narrative.get("macro_cycle_anchor"), is_weekend_close, errors)
+    _validate_ticker_audits(narrative.get("ticker_audits"), errors)
 
     schema = get_schema(market)
 
@@ -241,13 +375,19 @@ def validate_narrative(narrative: dict, market: str,
                         spec["enums"]["stage"], errors)
             _check_enum("yangjia_emotion_cycle.intensity", f.get("intensity"),
                         spec["enums"]["intensity"], errors)
+            _check_length_range(f.get("panorama_text"), PANORAMA_LEN,
+                                "yangjia_emotion_cycle.panorama_text", errors)
+            _check_length_range(f.get("cross_validation_text"), CROSS_VALIDATION_LEN,
+                                "yangjia_emotion_cycle.cross_validation_text", errors)
+            _validate_prev_audit(f, "yangjia_emotion_cycle", errors)
 
-        if narrative.get("zhaolaoge_liquidity_focus") is not None:
-            _validate_category_field(narrative["zhaolaoge_liquidity_focus"],
-                                     "zhaolaoge_liquidity_focus", "A", errors)
-        if narrative.get("fengliu_contrarian_check") is not None:
-            _validate_category_field(narrative["fengliu_contrarian_check"],
-                                     "fengliu_contrarian_check", "A", errors)
+        for fname in ("zhaolaoge_liquidity_focus", "fengliu_contrarian_check"):
+            f = narrative.get(fname)
+            if f is not None:
+                _validate_category_field(f, fname, "A", errors)
+                _validate_key_movers(f, fname, errors)
+                _validate_prev_audit(f, fname, errors)
+
         _validate_discipline(narrative.get("trading_discipline_review"), "A", errors)
 
     else:  # US
@@ -268,7 +408,11 @@ def validate_narrative(narrative: dict, market: str,
 
 def merge_into_session(session: dict, narrative: dict) -> dict:
     """把 narrative 合并进 session（in-place 也返回）。
-    覆盖整个 narrative 字段；同时把 ticker_analyses 回填到 tickers[i].analysis。
+
+    - 覆盖整个 narrative 字段
+    - ticker_analyses 回填到 tickers[i].analysis
+    - ticker_audits（LLM 人格审）覆盖 tickers[i].audit（build_snapshot 的 Python
+      量化审已兜底；这里只对 LLM 显式给出的少数 code 升级为人格审）
     """
     session["narrative"] = narrative
     ta = narrative.get("ticker_analyses") or {}
@@ -276,4 +420,10 @@ def merge_into_session(session: dict, narrative: dict) -> dict:
         for t in session.get("tickers", []):
             if t["code"] in ta:
                 t["analysis"] = ta[t["code"]]
+    audits = narrative.get("ticker_audits") or {}
+    if audits:
+        for t in session.get("tickers", []):
+            new = audits.get(t["code"])
+            if new:
+                t["audit"] = new  # 覆盖 quant 兜底
     return session

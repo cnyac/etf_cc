@@ -66,6 +66,16 @@ def test_noon_historical_raises(monkeypatch, fake_pool):
     assert called["rt"] == 0
 
 
+def test_weekend_flag_helper():
+    """周末判定：A 股周五-收 / 美股周五 → true；其余 false。"""
+    # 2026-05-22 是周五
+    assert bs._is_weekend_close("2026-05-22", "A", "close", "2026-05-22-收") is True
+    assert bs._is_weekend_close("2026-05-22", "A", "noon", "2026-05-22-午") is False
+    assert bs._is_weekend_close("2026-05-22", "US", "close", "2026-05-22") is True
+    # 2026-05-21 是周四 → false
+    assert bs._is_weekend_close("2026-05-21", "A", "close", "2026-05-21-收") is False
+
+
 def test_noon_today_appends_realtime(monkeypatch, fake_pool, tmp_path):
     """今日 + noon → 调 realtime，append 后跑通流水线。"""
     today = datetime.date.today().strftime("%Y-%m-%d")

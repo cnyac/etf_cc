@@ -111,3 +111,49 @@ def test_annotation_trail_empty():
     session = {"label": "L_now", "tickers": [_mk_ticker()], "panel": {}}
     p = build_prompt("A", session, [])
     assert "批注轨迹" in p and "（无）" in p
+
+
+def test_prompt_includes_audit_context_when_prev_has_expect():
+    """上一时段有 next_session_expect 时，prompt 应含审计对照锚点。"""
+    session = {"label": "2026-05-20-收", "tickers": [_mk_ticker()], "panel": {}}
+    history = [{"label": "2026-05-19-收", "narrative": {
+        "is_skeleton": False, "session_summary": "x",
+        "yangjia_emotion_cycle": {
+            "stage": "高潮", "intensity": "强", "evidence": "x",
+            "next_session_expect": "情绪退潮但仍存余温",
+            "what_kills_this_view": "y", "free_analysis": "z",
+        },
+    }, "tickers": []}]
+    p = build_prompt("A", session, history)
+    assert "预期审计对照" in p
+    assert "情绪退潮但仍存余温" in p
+
+
+def test_prompt_skips_audit_when_prev_skeleton():
+    session = {"label": "2026-05-20-收", "tickers": [_mk_ticker()], "panel": {}}
+    history = [{"label": "2026-05-19-收", "narrative": {
+        "is_skeleton": True, "session_summary": "x"}, "tickers": []}]
+    p = build_prompt("A", session, history)
+    assert "为骨架/无 LLM 叙事，跳过审计" in p
+
+
+def test_prompt_weekend_flag_required():
+    session = {"label": "2026-05-22-收", "tickers": [_mk_ticker()], "panel": {},
+               "is_weekend_close": True}
+    p = build_prompt("A", session, [])
+    assert "macro_cycle_anchor 字段本时段必填" in p
+
+
+def test_prompt_weekend_flag_skipped_on_weekday():
+    session = {"label": "2026-05-20-收", "tickers": [_mk_ticker()], "panel": {},
+               "is_weekend_close": False}
+    p = build_prompt("A", session, [])
+    assert "macro_cycle_anchor 填 null" in p
+
+
+def test_prompt_includes_strategy_outlook_schema():
+    session = {"label": "L", "tickers": [_mk_ticker()], "panel": {}}
+    p = build_prompt("A", session, [])
+    assert "strategy_outlook" in p
+    assert "key_movers" in p
+    assert "unique_anomaly_analysis" in p

@@ -36,6 +36,19 @@ VALID_YANGJIA = {
     "next_session_expect": "情绪修复或继续阴跌均可能",
     "what_kills_this_view": "明日早盘强势 ETF >5 个且涨幅 >2%",
     "free_analysis": "今日情绪走弱，强反转占比近半数，资金避险情绪明显。",
+    "panorama_text": (
+        "一、上涨与下跌占比 15:24，强反转 17 只居首，资金扎堆避险但未呈共振杀跌。"
+        "强势品种仅 1 只，热度退潮明显，缺乏龙头持续效应。"
+        "二、跨资产侧黄金、原油均向下，国债持平，无避险溢价的反向共振；"
+        "美元未现端倪，传统避险逻辑链条不完整。"
+        "三、量能扩张品种仅 2 只，主线缺乏合力，市场处于试错末段；"
+        "若午后无新增放量主线，全天大概率仍在缩量阴跌格局收。"
+    ),
+    "cross_validation_text": (
+        "权重板块普跌且券商缩量同步，符合存量博弈跷跷板特征——资金从高位题材撤出，"
+        "但未明确流向低位防御板块，高低切迹象初现但未成势；红利搬家逻辑暂未启动。"
+        "国债与商品的同向走弱说明流动性整体在收缩，非单一风格切换，跨资产无明显避险共振。"
+    ),
 }
 
 
@@ -291,6 +304,132 @@ def test_merge_ticker_analyses_to_session():
     merge_into_session(session, narrative)
     assert "测试分析内容" in session["tickers"][0]["analysis"]
     assert session["tickers"][1]["analysis"] == ""  # 未提供的不动
+
+
+def test_merge_ticker_audits_overrides_quant():
+    """LLM 给的人格审应覆盖 build_snapshot 兜底的 quant 审。"""
+    from src.llm_validate import merge_into_session
+    session = {"tickers": [
+        {"code": "SH510050", "audit": {"actual_vs_expected": "符合预期", "auditor": "quant"}},
+        {"code": "SZ159995", "audit": {"actual_vs_expected": "低于预期", "auditor": "quant"}},
+    ]}
+    narrative = {
+        "is_skeleton": False, "session_summary": "x",
+        "ticker_audits": {
+            "SH510050": {"actual_vs_expected": "强超于预期", "auditor": "zhaolaoge"},
+        },
+    }
+    merge_into_session(session, narrative)
+    # 被覆盖
+    assert session["tickers"][0]["audit"] == {"actual_vs_expected": "强超于预期", "auditor": "zhaolaoge"}
+    # 未提供的保留 quant 兜底
+    assert session["tickers"][1]["audit"]["auditor"] == "quant"
+
+
+# ---------- 新顶层字段 ----------
+
+def test_strategy_outlook_valid():
+    so = {
+        "market_phase": "趋势主升", "trend_forecast": "上涨", "style_tone": "偏向进攻",
+        "attack_direction": "AI 算力 + 半导体设备",
+        "retreat_direction": "传统消费 + 高位地产",
+        "key_focus": ["证券板块是否补涨", "10 年期国债收益率"],
+        "risk_points": ["机构调仓引发踩踏", "外资突然撤离"],
+    }
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None,
+         "strategy_outlook": so}
+    ok, errors = validate_narrative(n, "A")
+    assert ok, errors
+
+
+def test_strategy_outlook_bad_enum():
+    so = {
+        "market_phase": "牛市顶", "trend_forecast": "上涨", "style_tone": "偏向进攻",
+        "attack_direction": "x", "retreat_direction": "x",
+        "key_focus": ["a"], "risk_points": ["b"],
+    }
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None,
+         "strategy_outlook": so}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("market_phase" in e and "白名单" in e for e in errors)
+
+
+def test_macro_cycle_required_on_weekend():
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A", is_weekend_close=True)
+    assert not ok
+    assert any("macro_cycle_anchor" in e and "周末" in e for e in errors)
+
+
+def test_macro_cycle_optional_on_weekday():
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A", is_weekend_close=False)
+    assert ok, errors
+
+
+def test_unique_anomaly_length_band():
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None,
+         "unique_anomaly_analysis": "短" * 50}  # < 200 字
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("unique_anomaly_analysis" in e for e in errors)
+
+
+def test_ticker_audits_rejects_quant_auditor():
+    """LLM 不允许声明 auditor=quant（那是 Python 的活）。"""
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None,
+         "ticker_audits": {
+             "SH510050": {"actual_vs_expected": "超于预期", "auditor": "quant"},
+         }}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("quant" in e and "不允许" in e for e in errors)
+
+
+def test_key_movers_too_few():
+    """zhaolaoge 必须 ≥2 条 key_movers。"""
+    zhao = {
+        "anchor_etfs": ["SH510050"],
+        "liquidity_signal": "主线合力",
+        "evidence": "上涨 15 只，量比 1.5x",
+        "follow_strategy": "顺势跟进半导体",
+        "what_kills_this_view": "明日量能塌缩",
+        "free_analysis": "x" * 50,
+        "key_movers": [
+            {"sector": "AI", "phenomenon": "放量上涨", "motive": "机构进攻", "scenario": "持续主升"},
+        ],
+    }
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": zhao,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("key_movers 至少" in e for e in errors)
+
+
+def test_prev_session_audit_bad_rating():
+    yj = {**VALID_YANGJIA,
+          "prev_session_audit": {"actual_vs_expected": "差不多", "audit_note": "x"}}
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": yj,
+         "zhaolaoge_liquidity_focus": None, "fengliu_contrarian_check": None,
+         "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("prev_session_audit.actual_vs_expected" in e for e in errors)
 
 
 def test_weinstein_bad_enum():

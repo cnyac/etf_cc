@@ -17,6 +17,7 @@ STRONG_THRESHOLD = 0.02       # ±2% 涨跌算"强"
 VOL_EXPAND = 1.5              # vol_ratio_20 > 1.5 → 扩张
 VOL_CONTRACT = 0.7            # < 0.7 → 收缩
 CROSS_ASSET_FLAT = 0.003      # ±0.3% 内算 flat
+BREADTH_ALERT_PCT = 0.70      # 占比 ≥70% 触发极值共振预警
 
 
 def _cross_asset_dir(pct: float) -> str:
@@ -83,6 +84,15 @@ def build_panel(per_ticker: list[dict], pool_config: dict,
         p = pct_by_code.get(code)
         cross_asset[role] = _cross_asset_dir(p) if p is not None else None
 
+    # 极值共振预警（任务 2.0）：上涨/下跌占比 ≥70%
+    total = up + down + flat
+    breadth_alert: str | None = None
+    if total > 0:
+        if up / total >= BREADTH_ALERT_PCT:
+            breadth_alert = "bullish_resonance"
+        elif down / total >= BREADTH_ALERT_PCT:
+            breadth_alert = "bearish_resonance"
+
     panel = {
         "up_count": up,
         "down_count": down,
@@ -95,6 +105,7 @@ def build_panel(per_ticker: list[dict], pool_config: dict,
         "new_low_count_20d": nl,
         "cross_asset_state": cross_asset,
         "category_distribution": cats,
+        "breadth_alert": breadth_alert,
     }
 
     if market == "US":

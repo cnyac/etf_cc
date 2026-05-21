@@ -87,42 +87,137 @@ def _load_spark_closes(market: str, codes: list[str],
     return out
 
 
-def _pick_tracking_codes(session: dict, max_n: int = 12) -> list[str]:
-    """选 §4 跨日追踪表的品种：带特征标签的优先 + |pct_normalized| 高的 + 量异常。"""
-    scored = []
-    for t in session.get("tickers", []):
-        score = 0
-        if t.get("feature"):
-            score += 10
-        f = t.get("factors") or {}
-        pn = f.get("pct_normalized")
-        if pn is not None:
-            score += abs(pn) * 3
-        vr = f.get("vol_ratio_20")
-        if vr is not None and (vr > 1.5 or vr < 0.7):
-            score += 2
-        p60 = f.get("price_pctile_60")
-        if p60 is not None and (p60 >= 90 or p60 <= 10):
-            score += 2
-        scored.append((score, t["code"]))
-    scored.sort(key=lambda x: -x[0])
-    return [c for _, c in scored[:max_n]]
+_VOLUME_ONLY_TAGS = {"最增量", "最缩量"}
 
 
-def _pick_matrix_codes(session: dict, max_n: int = 15) -> list[str]:
+def _is_volume_only_feature(feature: str) -> bool:
+    """feature 是否只由 最增量/最缩量 组成（无其它位置/特征标签）。"""
+    if not feature:
+        return True
+    tags = {t.strip() for t in feature.split("，") if t.strip()}
+    return bool(tags) and tags.issubset(_VOLUME_ONLY_TAGS)
+
+
+def _pick_tracking_codes(session: dict, history: list[dict] | None = None,
+                         max_n: int = 12) -> list[str]:
+    """§4 跨日追踪表提取规则（任务 2.3 对齐）：
+      - 上一时段（"昨日收盘"）feature 含非纯最增/缩标签的品种（基础名单）
+      - 独特品种（feature 含"独特"，全时段窗口扫）
+      - 兜底：若不足 max_n，按 |pct_normalized| / 量异常补足当前 session 品种
+
+    history 为 None 或空时退化为只看当前 session（兼容首次窗口）。
+    """
+    picked: list[str] = []
+    seen: set[str] = set()
+
+    def _add(code: str) -> None:
+        if code and code not in seen:
+            picked.append(code); seen.add(code)
+
+    # 基础名单：上一时段有非纯最增/缩标签
+    prev = (history or [])[-1] if history else None
+    if prev:
+        for t in prev.get("tickers", []):
+            if t.get("feature") and not _is_volume_only_feature(t["feature"]):
+                _add(t["code"])
+
+    # 独特品种：全窗口扫（含当前）
+    all_sessions = (history or []) + [session]
+    for s in all_sessions:
+        for t in s.get("tickers", []):
+            if "独特" in (t.get("feature") or ""):
+                _add(t["code"])
+
+    # 兜底：按 |pct_normalized| / 量异常补足
+    if len(picked) < max_n:
+        scored = []
+        for t in session.get("tickers", []):
+            if t["code"] in seen:
+                continue
+            score = 0
+            f = t.get("factors") or {}
+            pn = f.get("pct_normalized")
+            if pn is not None:
+                score += abs(pn) * 3
+            vr = f.get("vol_ratio_20")
+            if vr is not None and (vr > 1.5 or vr < 0.7):
+                score += 2
+            scored.append((score, t["code"]))
+        scored.sort(key=lambda x: -x[0])
+        for _, code in scored:
+            if len(picked) >= max_n:
+                break
+            _add(code)
+
+    return picked[:max_n]
+
+
+def _pick_matrix_codes(session: dict, history: list[dict] | None = None,
+                       max_n: int = 15) -> list[str]:
     """§5 矩阵：跨日的扩到 15 个。复用 _pick_tracking_codes 逻辑放宽。"""
-    return _pick_tracking_codes(session, max_n)
+    return _pick_tracking_codes(session, history, max_n)
 
 
-def _bucket_by_category(tickers: list[dict]) -> dict[str, list[dict]]:
+def _short_label(label: str) -> str:
+    """label → 紧凑显示：A 股 2026-05-20-收 → 05-20 收；US 2026-05-20 → 05-20"""
+    parts = (label or "").split("-")
+    if len(parts) >= 4:
+        return f"{parts[1]}-{parts[2]} {parts[3]}"
+    if len(parts) >= 3:
+        return f"{parts[1]}-{parts[2]}"
+    return label or ""
+
+
+def _build_groups(target: dict, history: list[dict]) -> list[dict]:
+    """为 §3 三行渲染构造品种组：每个 group = 当前 session 的 ticker + 它在
+    history[-2:] 同 code 的历史行（按时间升序，最多 3 行）。
+
+    annotation_color 取自当前 session 的 ticker.annotation（B 在最新报告里批注，
+    染该品种所有时段行）。"""
+    recent = (history or [])[-2:] + [target]
+    groups = []
+    for t in target.get("tickers", []):
+        code = t["code"]
+        ann = t.get("annotation") or {}
+        g = {
+            "code": code,
+            "name": t.get("name"),
+            "category": t.get("category"),
+            "annotation_color": ann.get("color"),
+            "annotation_note": ann.get("note"),
+            "rows": [],
+        }
+        for sess in recent:
+            for ts in sess.get("tickers", []):
+                if ts["code"] == code:
+                    g["rows"].append({
+                        "label_short": _short_label(sess.get("label", "")),
+                        "today_pct": ts.get("today_pct"),
+                        "yest_pct": ts.get("yest_pct"),
+                        "pct_diff": ts.get("pct_diff"),
+                        "factors": ts.get("factors"),
+                        "feature": ts.get("feature"),
+                        "new_high_20d": ts.get("new_high_20d"),
+                        "new_low_20d": ts.get("new_low_20d"),
+                        "analysis": ts.get("analysis"),
+                        "audit": ts.get("audit"),  # 阶段 B 填入
+                    })
+                    break
+        groups.append(g)
+    return groups
+
+
+def _bucket_groups_by_category(groups: list[dict]) -> dict[str, list[dict]]:
     buckets = {"持续强化": [], "反包修复": [], "强反转": [], "连续杀跌": []}
-    for t in tickers:
-        cat = t.get("category")
+    for g in groups:
+        cat = g.get("category")
         if cat in buckets:
-            buckets[cat].append(t)
-    # 按 pct_diff 降序排
+            buckets[cat].append(g)
+    # 按 current（最后一行）的 pct_diff 降序排
     for cat in buckets:
-        buckets[cat].sort(key=lambda x: (x.get("pct_diff") or 0), reverse=True)
+        buckets[cat].sort(
+            key=lambda g: (g["rows"][-1].get("pct_diff") if g["rows"] else 0) or 0,
+            reverse=True)
     return buckets
 
 
@@ -143,9 +238,10 @@ def render(market: Literal["A", "US"], label: str) -> str:
         history = [s for s in data["sessions"] if s["label"] != label]
 
     name_map = {t["code"]: t.get("name", t["code"]) for t in target["tickers"]}
-    tickers_by_cat = _bucket_by_category(target["tickers"])
-    tracking_codes = _pick_tracking_codes(target)
-    matrix_codes = _pick_matrix_codes(target)
+    groups = _build_groups(target, history)
+    tickers_by_cat = _bucket_groups_by_category(groups)
+    tracking_codes = _pick_tracking_codes(target, history)
+    matrix_codes = _pick_matrix_codes(target, history)
 
     # 内嵌的 snapshot 简化：只保留必要字段，避免 HTML 过大
     snapshot_payload = {

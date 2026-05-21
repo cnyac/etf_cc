@@ -9,13 +9,17 @@
    - market_label: "A 股" 或 "美股"
 #}
 {# ===================== Jinja macros ===================== #}
+{% set _PERSONA_SPECIAL = ('what_kills_this_view', 'free_analysis',
+                           'panorama_text', 'cross_validation_text',
+                           'key_movers', 'prev_session_audit') %}
+
 {% macro persona_card(field_name, title, data) %}
   <div class="persona-card{% if not data %} null{% endif %}">
     <div class="field-name">{{ title }}</div>
     {% if not data %}
       <div>—（候选 0 或字段缺失）</div>
     {% else %}
-      {% for k, v in data.items() if k not in ('what_kills_this_view', 'free_analysis') %}
+      {% for k, v in data.items() if k not in _PERSONA_SPECIAL %}
         <div class="kv"><span class="key">{{ k }}:</span>
           {% if v is mapping or (v is iterable and v is not string) %}
             {{ v | tojson }}
@@ -25,6 +29,48 @@
       {% if data.free_analysis %}
         <div class="free-analysis">{{ data.free_analysis }}</div>
       {% endif %}
+      {% if data.panorama_text %}
+        <div class="persona-section">
+          <div class="persona-section-h">全景图（≥3 段）</div>
+          <div class="persona-section-body">{{ data.panorama_text }}</div>
+        </div>
+      {% endif %}
+      {% if data.cross_validation_text %}
+        <div class="persona-section">
+          <div class="persona-section-h">交叉验证</div>
+          <div class="persona-section-body">{{ data.cross_validation_text }}</div>
+        </div>
+      {% endif %}
+      {% if data.key_movers %}
+        <div class="persona-section">
+          <div class="persona-section-h">关键异动板块</div>
+          <ul class="key-movers">
+          {% for m in data.key_movers %}
+            <li>
+              <span class="km-sector">{{ m.sector }}</span> ·
+              <span class="km-phen">{{ m.phenomenon }}</span><br>
+              <span class="km-motive">动因：{{ m.motive }}</span><br>
+              <span class="km-scenario">推演：{{ m.scenario }}</span>
+            </li>
+          {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      {% if data.prev_session_audit %}
+        <div class="prev-audit">
+          <span class="prev-audit-label">预期审计：</span>
+          <span class="audit-badge audit-{{ data.prev_session_audit.actual_vs_expected }}
+                       auditor-{{ field_name|replace('_emotion_cycle','')|replace('_liquidity_focus','')
+                                              |replace('_contrarian_check','')
+                                              |replace('_macro_check','')|replace('_breadth_check','')
+                                              |replace('_breakout_check','')|replace('_stage_check','') }}">
+            {{ data.prev_session_audit.actual_vs_expected }}
+          </span>
+          {% if data.prev_session_audit.audit_note %}
+            <span class="prev-audit-note">{{ data.prev_session_audit.audit_note }}</span>
+          {% endif %}
+        </div>
+      {% endif %}
       {% if data.what_kills_this_view %}
         <div class="kills">证伪条件：{{ data.what_kills_this_view }}</div>
       {% endif %}
@@ -32,65 +78,85 @@
   </div>
 {% endmacro %}
 
-{% macro category_table(rows) %}
+{# category_table 接 group list；每 group 渲染 1-3 行（按窗口里该 code 实际出现的时段数）。
+   代码 / 名称 / 批注 列跨整组 rowspan；其它列每时段独立一行。 #}
+{% macro category_table(groups) %}
 <table>
   <thead>
     <tr>
       <th style="width:88px">代码</th>
-      <th style="width:140px">名称</th>
+      <th style="width:120px">名称</th>
+      <th style="width:62px">时段</th>
       <th style="width:70px">涨幅</th>
       <th style="width:60px">差值</th>
       <th style="width:70px">量能</th>
       <th style="width:70px">价位</th>
       <th style="width:50px">均线</th>
       <th>标签 / LLM 点评</th>
-      <th style="width:280px">批注（点击行编辑）</th>
+      <th style="width:90px">预期审计</th>
+      <th style="width:240px">批注（点击行编辑）</th>
     </tr>
   </thead>
   <tbody>
-  {% for r in rows %}
-    {% set f = r.factors or {} %}
-    {% set pn = f.pct_normalized %}
-    {% set outlier = (pn is not none and (pn > 2 or pn < -2)) %}
-    <tr data-code="{{ r.code }}" class="tr-clickable{% if outlier %} outlier-row{% endif %}">
-      <td>{{ r.code[2:] if r.code|length > 6 else r.code }}{% if r.new_high_20d %} <span class="up">★</span>{% elif r.new_low_20d %} <span class="down">▼</span>{% endif %}{% if outlier %} <span class="warn">⚠</span>{% endif %}</td>
-      <td>{{ r.name or '' }}</td>
-      <td class="num">
-        <span class="{{ pct_class(r.today_pct) }}">{{ pct_fmt(r.today_pct) }}</span><br>
-        <span class="muted">{{ pct_fmt(r.yest_pct) }}</span>
-      </td>
-      <td class="num"><span class="{{ pct_class(r.pct_diff) }}">{{ pct_fmt(r.pct_diff) }}</span></td>
-      <td class="num">
-        {% if f.vol_ratio_20 is not none %}{{ '%.2fx'|format(f.vol_ratio_20) }}{% else %}—{% endif %}<br>
-        <span class="muted">{% if f.vol_pctile_20 is not none %}P{{ f.vol_pctile_20 }}{% endif %}</span>
-      </td>
-      <td class="num">
-        {% if f.price_pctile_60 is not none %}P{{ f.price_pctile_60 }}{% else %}—{% endif %}<br>
-        <span class="muted">{% if f.price_pctile_20 is not none %}P{{ f.price_pctile_20 }}{% endif %}</span>
-      </td>
-      <td class="center" title="收盘价 vs MA5 / MA20 / MA60（红=上方 蓝=下方 灰=近 ±0.5%）">
-        <span class="ma-dots">
-          <span class="ma-dot ma-dot-{{ f.close_vs_ma5 or 'na' }}" title="MA5"></span>
-          <span class="ma-dot ma-dot-{{ f.close_vs_ma20 or 'na' }}" title="MA20"></span>
-          <span class="ma-dot ma-dot-{{ f.close_vs_ma60 or 'na' }}" title="MA60"></span>
-        </span>
-      </td>
-      <td>
-        {% if r.feature %}
-          <div class="tag-row">
-          {% for tag in r.feature.split('，') %}
-            <span class="badge {% if '龙1' in tag or '修复龙1' in tag %}badge-long1{% elif '最增量' in tag %}badge-vol-plus{% elif '最缩量' in tag %}badge-vol-minus{% endif %}">{{ tag }}</span>
-          {% endfor %}
-          </div>
+  {% for g in groups %}
+    {% set rs = g.rows|length %}
+    {% set bg = g.annotation_color %}
+    {% for r in g.rows %}
+      {% set f = r.factors or {} %}
+      {% set pn = f.pct_normalized %}
+      {% set outlier = (pn is not none and (pn > 2 or pn < -2)) %}
+      <tr data-code="{{ g.code }}"
+          class="tr-clickable{% if outlier %} outlier-row{% endif %}{% if loop.last and rs > 1 %} group-end{% endif %}"
+          {% if bg %}style="background-color:{{ bg }};"{% endif %}>
+        {% if loop.first %}
+          <td rowspan="{{ rs }}">{{ g.code[2:] if g.code|length > 6 else g.code }}{% if r.new_high_20d %} <span class="up">★</span>{% elif r.new_low_20d %} <span class="down">▼</span>{% endif %}{% if outlier %} <span class="warn">⚠</span>{% endif %}</td>
+          <td rowspan="{{ rs }}">{{ g.name or '' }}</td>
         {% endif %}
-        {% if r.analysis %}
-          <div class="llm-analysis">{{ r.analysis }}</div>
+        <td class="center muted-small">{{ r.label_short }}</td>
+        <td class="num">
+          <span class="{{ pct_class(r.today_pct) }}">{{ pct_fmt(r.today_pct) }}</span><br>
+          <span class="muted">{{ pct_fmt(r.yest_pct) }}</span>
+        </td>
+        <td class="num"><span class="{{ pct_class(r.pct_diff) }}">{{ pct_fmt(r.pct_diff) }}</span></td>
+        <td class="num">
+          {% if f.vol_ratio_20 is not none %}{{ '%.2fx'|format(f.vol_ratio_20) }}{% else %}—{% endif %}<br>
+          <span class="muted">{% if f.vol_pctile_20 is not none %}P{{ f.vol_pctile_20 }}{% endif %}</span>
+        </td>
+        <td class="num">
+          {% if f.price_pctile_60 is not none %}P{{ f.price_pctile_60 }}{% else %}—{% endif %}<br>
+          <span class="muted">{% if f.price_pctile_20 is not none %}P{{ f.price_pctile_20 }}{% endif %}</span>
+        </td>
+        <td class="center" title="收盘价 vs MA5 / MA20 / MA60（红=上方 蓝=下方 灰=近 ±0.5%）">
+          <span class="ma-dots">
+            <span class="ma-dot ma-dot-{{ f.close_vs_ma5 or 'na' }}" title="MA5"></span>
+            <span class="ma-dot ma-dot-{{ f.close_vs_ma20 or 'na' }}" title="MA20"></span>
+            <span class="ma-dot ma-dot-{{ f.close_vs_ma60 or 'na' }}" title="MA60"></span>
+          </span>
+        </td>
+        <td>
+          {% if r.feature %}
+            <div class="tag-row">
+            {% for tag in r.feature.split('，') %}
+              <span class="badge {% if '龙1' in tag or '修复龙1' in tag %}badge-long1{% elif '最增量' in tag %}badge-vol-plus{% elif '最缩量' in tag %}badge-vol-minus{% endif %}">{{ tag }}</span>
+            {% endfor %}
+            </div>
+          {% endif %}
+          {% if r.analysis %}<div class="llm-analysis">{{ r.analysis }}</div>{% endif %}
+        </td>
+        <td class="center audit-cell">
+          {% if r.audit and r.audit.actual_vs_expected %}
+            <span class="audit-badge audit-{{ r.audit.actual_vs_expected }} auditor-{{ r.audit.auditor }}"
+                  title="审计人：{{ r.audit.auditor }}">{{ r.audit.actual_vs_expected }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        {% if loop.first %}
+          <td rowspan="{{ rs }}" class="annotation-cell" data-anno-cell-for="{{ g.code }}">
+            {% if g.annotation_note %}{{ g.annotation_note }}
+            {% else %}<span class="muted ann-placeholder">点击行编辑批注</span>{% endif %}
+          </td>
         {% endif %}
-      </td>
-      <td class="annotation-cell" data-anno-cell-for="{{ r.code }}">
-        <span class="muted ann-placeholder">点击行编辑批注</span>
-      </td>
-    </tr>
+      </tr>
+    {% endfor %}
   {% endfor %}
   </tbody>
 </table>
@@ -269,6 +335,116 @@ td.center { text-align: center; }
 .badge-long1 { background: #ffe4e1; border-color: #ff9090; }
 .badge-vol-plus { background: #ffe8e8; border-color: #ff7070; }
 .badge-vol-minus { background: #e3f2fd; border-color: #42a5f5; }
+
+/* 预期审计 badge — 紫边=量化审，红蓝边=人格审。颜色按评级方向。 */
+.audit-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  font-weight: bold;
+  white-space: nowrap;
+}
+.audit-强超于预期 { background: #ffd6d6; color: #b00020; }
+.audit-超于预期 { background: #ffeaea; color: #d32f2f; }
+.audit-符合预期 { background: #f0f0f0; color: #555; }
+.audit-低于预期 { background: #e3f0fa; color: #1565c0; }
+.audit-强低于预期 { background: #d0e3f7; color: #002b5c; }
+.auditor-quant { border: 2px solid #7e57c2; }
+.auditor-yangjia,
+.auditor-zhaolaoge,
+.auditor-fengliu,
+.auditor-discipline { border: 2px solid #888; }
+
+/* §3 组分隔线：同品种最后一行底部加粗，方便区分组 */
+.group-end td { border-bottom: 2px solid #aaa; }
+.muted-small { color: var(--gray); font-size: 0.85em; }
+.muted-2 { color: #555; font-size: 0.9em; }
+
+/* persona-card 扩展子段 */
+.persona-section {
+  margin: 10px 0;
+  padding: 8px 12px;
+  background: #fafafa;
+  border-left: 3px solid #ccc;
+}
+.persona-section-h {
+  font-family: "黑体", sans-serif;
+  font-size: 0.95em;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+.persona-section-body {
+  font-family: "仿宋_GB2312", "FangSong", serif;
+  line-height: 1.6;
+}
+.key-movers { margin: 6px 0; padding-left: 20px; }
+.key-movers li { margin-bottom: 6px; }
+.km-sector { font-weight: bold; }
+.km-phen { color: #444; }
+.km-motive, .km-scenario { color: #555; font-size: 0.9em; }
+
+.prev-audit {
+  margin: 8px 0;
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-radius: 3px;
+}
+.prev-audit-label { font-weight: bold; margin-right: 6px; }
+.prev-audit-note { color: #666; margin-left: 8px; font-size: 0.85em; }
+
+/* §3.5 独特异象 */
+.anomaly-card {
+  background: #fff7e6;
+  border-left: 5px solid #ff9800;
+  padding: 14px 18px;
+  margin: 10px 0 16px;
+  font-family: "仿宋_GB2312", "FangSong", serif;
+  line-height: 1.7;
+}
+
+/* §6 策略前瞻 */
+.strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 10px 0 16px;
+}
+.sc-item {
+  background: #fafafa;
+  border-left: 3px solid #ccc;
+  padding: 8px 12px;
+}
+.sc-wide { grid-column: span 3; }
+.sc-risk { border-left-color: var(--color-warn); background: #fff7e6; }
+.sc-key {
+  font-family: "黑体", sans-serif;
+  font-weight: bold;
+  margin-right: 8px;
+}
+.sc-val { font-size: 1em; }
+.sc-上涨 { color: var(--color-up); }
+.sc-下跌 { color: var(--color-down); }
+.sc-震荡 { color: #555; }
+.sc-list { margin: 4px 0 0 16px; padding: 0; }
+
+/* §7 宏观周期 */
+.macro-card {
+  background: #f8f9fa;
+  border-left: 6px solid #333;
+  padding: 18px 22px;
+  margin: 12px 0 18px;
+}
+.macro-h {
+  font-family: "黑体", sans-serif;
+  font-weight: bold;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.macro-body {
+  font-family: "仿宋_GB2312", "FangSong", serif;
+  line-height: 1.7;
+}
 
 .tag-row { margin-bottom: 4px; }
 .llm-analysis {
@@ -465,6 +641,17 @@ td.center { text-align: center; }
 
 <h1>{{ label }}（{{ market_label }}）</h1>
 
+{# ============ §0 极值共振预警（仅触发时显示）============ #}
+{% if session.panel.breadth_alert == "bullish_resonance" %}
+<div style="background-color:#ffe6e6;color:#FF0000;font-size:2em;font-family:'华文中宋',serif;font-weight:bold;text-align:center;padding:22px;border:6px solid #FF0000;margin:20px 0;box-shadow:0 4px 12px rgba(255,0,0,0.4);letter-spacing:2px;">
+🚨 全局极值预警：超 70% 品种共振起爆！做多情绪极度宣泄，注意逼空动能 🚨
+</div>
+{% elif session.panel.breadth_alert == "bearish_resonance" %}
+<div style="background-color:#e6f0fa;color:#00008B;font-size:2em;font-family:'华文中宋',serif;font-weight:bold;text-align:center;padding:22px;border:6px solid #00008B;margin:20px 0;box-shadow:0 4px 12px rgba(0,0,139,0.4);letter-spacing:2px;">
+⚠ 全局极值预警：超 70% 品种共振杀跌！流动性急剧收缩，防守退潮信号 ⚠
+</div>
+{% endif %}
+
 {# ============ §1 盘面概览 ============ #}
 <h2>§1 盘面概览</h2>
 {% set p = session.panel %}
@@ -568,6 +755,12 @@ td.center { text-align: center; }
   {% endif %}
 {% endfor %}
 
+{# ============ §3.5 独特异象追踪（炒家专项；无独特品种时跳过）============ #}
+{% if n and not n.is_skeleton and n.unique_anomaly_analysis %}
+<h2>§3.5 独特异象追踪（炒家专项）</h2>
+<div class="anomaly-card">{{ n.unique_anomaly_analysis }}</div>
+{% endif %}
+
 {# ============ §4 跨日追踪表 ============ #}
 {% if history|length >= 1 %}
 <h2>§4 跨日追踪（最近 3 时段）</h2>
@@ -578,6 +771,67 @@ td.center { text-align: center; }
 {% if matrix_codes %}
 <h2>§5 20 时段矩阵概览</h2>
 {{ matrix_view(history + [session], matrix_codes) }}
+{% endif %}
+
+{# ============ §6 策略前瞻（养家 6 项 + 炒家风险点）============ #}
+{% if n and not n.is_skeleton and n.strategy_outlook %}
+{% set so = n.strategy_outlook %}
+<h2>§6 策略前瞻</h2>
+<div class="strategy-grid">
+  <div class="sc-item"><span class="sc-key">市场阶段</span><span class="sc-val">{{ so.market_phase }}</span></div>
+  <div class="sc-item"><span class="sc-key">大势预判</span><span class="sc-val sc-{{ so.trend_forecast }}">{{ so.trend_forecast }}</span></div>
+  <div class="sc-item"><span class="sc-key">风格定调</span><span class="sc-val">{{ so.style_tone }}</span></div>
+  <div class="sc-item sc-wide"><span class="sc-key">主攻方向</span><span class="sc-val">{{ so.attack_direction }}</span></div>
+  <div class="sc-item sc-wide"><span class="sc-key">出逃方向</span><span class="sc-val">{{ so.retreat_direction }}</span></div>
+  {% if so.key_focus %}
+  <div class="sc-item sc-wide">
+    <span class="sc-key">核心关注</span>
+    <ul class="sc-list">{% for kf in so.key_focus %}<li>{{ kf }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  {% if so.risk_points %}
+  <div class="sc-item sc-wide sc-risk">
+    <span class="sc-key">风险点（炒家专项）</span>
+    <ul class="sc-list">{% for rp in so.risk_points %}<li>{{ rp }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ============ §7 宏观周期定位与历史极值映射（仅周末收盘）============ #}
+{% if n and not n.is_skeleton and n.macro_cycle_anchor %}
+{% set mc = n.macro_cycle_anchor %}
+<h2>§7 宏观周期定位（养家 × 炒家联合）</h2>
+<div class="macro-card">
+  <div class="macro-h">资产图谱</div>
+  <div class="macro-body">{{ mc.asset_profile }}</div>
+
+  {% if mc.historical_anchor %}
+  <div class="macro-h">历史极值时空定位</div>
+  <div class="macro-body">
+    <strong>{{ mc.historical_anchor.year }}</strong> ·
+    {{ mc.historical_anchor.event }} ·
+    阶段：{{ mc.historical_anchor.phase }}<br>
+    <span class="muted-2">{{ mc.historical_anchor.brief }}</span>
+  </div>
+  {% endif %}
+
+  {% if mc.then_vs_now %}
+  <div class="macro-h">跨时空异同</div>
+  <div class="macro-body">
+    <div><strong>形似：</strong>{{ mc.then_vs_now.similarity }}</div>
+    <div><strong>神异：</strong>{{ mc.then_vs_now.divergence }}</div>
+  </div>
+  {% endif %}
+
+  {% if mc.forward_strategy %}
+  <div class="macro-h">沙盘推演与实战警告</div>
+  <div class="macro-body">
+    <div><strong>黑天鹅风险：</strong>{{ mc.forward_strategy.risks }}</div>
+    <div><strong>隐蔽机会：</strong>{{ mc.forward_strategy.opportunities }}</div>
+  </div>
+  {% endif %}
+</div>
 {% endif %}
 
 <button id="save-btn">保存</button>

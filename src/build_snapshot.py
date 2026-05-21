@@ -34,6 +34,7 @@ from src.panel import build_panel
 from src.classify import enrich
 from src import window as win
 from src import log_util
+from src import audit as audit_mod
 
 DEFAULT_POOL_A = os.path.join(ROOT, "config", "pool_a.yaml")
 DEFAULT_POOL_US = os.path.join(ROOT, "config", "pool_us.yaml")
@@ -193,12 +194,25 @@ def build(market: Literal["A", "US"], label: str,
 
     panel = build_panel(per_ticker, pool, market)
 
+    # 量化代审兜底（任务 2.2）：用窗口里"前一时段"对每只 ticker 打 D1+D2 分。
+    # 必须在 append 当前 session 前查；fill_narrative 时 LLM 可覆盖部分 ticker。
+    prev_data = win.load(market)
+    prev_session = prev_data["sessions"][-1] if prev_data.get("sessions") else None
+    audits = audit_mod.quant_audit_batch(prev_session, {"tickers": per_ticker})
+    for t in per_ticker:
+        a = audits.get(t["code"])
+        t["audit"] = a  # dict 或 None
+
+    # 周末标记（任务 4）：A 股周五-收 / 美股周五 → 触发 macro_cycle_anchor
+    is_weekend_close = _is_weekend_close(trade_date, market, session_time, label)
+
     session = {
         "label": label,
         "market": market,
         "session_time": session_time,
         "trade_date": trade_date,
         "timestamp": datetime.datetime.now().isoformat(),
+        "is_weekend_close": is_weekend_close,
         "tickers": per_ticker,
         "panel": panel,
         "narrative": None,
@@ -211,6 +225,20 @@ def build(market: Literal["A", "US"], label: str,
         print(f"  弹出最老 session: {popped}")
 
     return session
+
+
+def _is_weekend_close(trade_date: str, market: str,
+                      session_time: str, label: str) -> bool:
+    """周末收盘判定：周五（weekday=4）。A 股需 session_time=close；美股每个 label 即收盘。"""
+    try:
+        wd = datetime.date.fromisoformat(trade_date).weekday()
+    except (ValueError, TypeError):
+        return False
+    if wd != 4:
+        return False
+    if market == "A":
+        return session_time == "close"
+    return True  # US
 
 
 def main():

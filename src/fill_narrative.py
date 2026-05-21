@@ -34,7 +34,10 @@ def main():
         print(f"找不到 label={args.label}", file=sys.stderr)
         sys.exit(1)
 
-    ok, errors = validate_narrative(narrative, args.market, target.get("panel"))
+    ok, errors = validate_narrative(
+        narrative, args.market, target.get("panel"),
+        is_weekend_close=target.get("is_weekend_close", False),
+    )
     if not ok:
         print(f"校验失败 ({len(errors)} 个错误):", file=sys.stderr)
         for e in errors:

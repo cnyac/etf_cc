@@ -147,6 +147,37 @@ def test_pct_fmt_and_class():
 def test_pick_tracking_codes_prefers_features(tmp_env):
     s = _mk_session()
     codes = rh._pick_tracking_codes(s, max_n=5)
-    # 带 feature 的两只都应入选
+    # 当前 session 的特征做兜底排序也会入选
     assert "SH510050" in codes
     assert "SH518880" in codes
+
+
+def test_pick_tracking_excludes_pure_volume_only_tag(tmp_env):
+    # 上一时段 feature 只有"最增量" → 不应入名单（除非有其它来源补足）
+    prev = _mk_session(label="2026-05-19-收")
+    prev["tickers"][0]["feature"] = "最增量"      # 纯量能标签
+    prev["tickers"][1]["feature"] = "龙1，最增量"   # 含位置标签 → 入名单
+    curr = _mk_session(label="2026-05-20-收")
+    codes = rh._pick_tracking_codes(curr, history=[prev], max_n=2)
+    assert "SH518880" in codes      # 龙1，最增量
+    # SH510050 仅最增量被剔，但 max_n=2 时兜底逻辑可能补回；用 max_n=1 验证
+    codes_strict = rh._pick_tracking_codes(curr, history=[prev], max_n=1)
+    assert codes_strict == ["SH518880"]
+
+
+def test_build_groups_three_rows_with_history(tmp_env):
+    s_prev2 = _mk_session(label="2026-05-18-收")
+    s_prev1 = _mk_session(label="2026-05-19-收")
+    s_curr = _mk_session(label="2026-05-20-收")
+    groups = rh._build_groups(s_curr, [s_prev2, s_prev1])
+    g0 = next(g for g in groups if g["code"] == "SH510050")
+    assert len(g0["rows"]) == 3
+    assert [r["label_short"] for r in g0["rows"]] == ["05-18 收", "05-19 收", "05-20 收"]
+
+
+def test_build_groups_annotation_color_propagated(tmp_env):
+    s_curr = _mk_session(label="2026-05-20-收")
+    groups = rh._build_groups(s_curr, [])
+    g_gold = next(g for g in groups if g["code"] == "SH518880")
+    assert g_gold["annotation_color"] == "#FFE4B5"
+    assert g_gold["annotation_note"] == "黄金破位"

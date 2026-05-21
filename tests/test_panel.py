@@ -6,7 +6,7 @@
   - 美股扩展字段（above_ma150_count / spy_iwm_divergence）
 """
 import pytest
-from src.panel import build_panel, CROSS_ASSET_FLAT
+from src.panel import build_panel, CROSS_ASSET_FLAT, BREADTH_ALERT_PCT
 
 
 POOL_A = {
@@ -117,3 +117,28 @@ def test_a_share_has_no_us_only_fields():
     p = build_panel(pt, POOL_A, "A")
     assert "above_ma150_count" not in p
     assert "spy_iwm_divergence" not in p
+
+
+def test_breadth_alert_bullish_resonance():
+    # 7 涨 / 3 跌 = 70% → 触发
+    pt = [_t(f"C{i}", 0.02) for i in range(7)] + [_t(f"C{i}", -0.02) for i in range(7, 10)]
+    p = build_panel(pt, POOL_A, "A")
+    assert p["breadth_alert"] == "bullish_resonance"
+
+
+def test_breadth_alert_bearish_resonance():
+    pt = [_t(f"C{i}", -0.02) for i in range(7)] + [_t(f"C{i}", 0.02) for i in range(7, 10)]
+    p = build_panel(pt, POOL_A, "A")
+    assert p["breadth_alert"] == "bearish_resonance"
+
+
+def test_breadth_alert_none_when_below_threshold():
+    # 6 涨 / 4 跌 = 60% → 不触发
+    pt = [_t(f"C{i}", 0.02) for i in range(6)] + [_t(f"C{i}", -0.02) for i in range(6, 10)]
+    p = build_panel(pt, POOL_A, "A")
+    assert p["breadth_alert"] is None
+
+
+def test_breadth_alert_empty_pool():
+    p = build_panel([], POOL_A, "A")
+    assert p["breadth_alert"] is None
