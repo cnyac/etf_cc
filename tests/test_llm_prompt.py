@@ -1,0 +1,113 @@
+"""llm_prompt.py 测试：短键映射 + prompt 含必要段落。"""
+from src.llm_prompt import (
+    build_prompt, _compress_ticker, SHORT_KEYS, MA_ENCODE, CAT_ENCODE,
+)
+
+
+def _mk_ticker(market="A", **overrides):
+    base = {
+        "code": "SH510050", "name": "上证50ETF",
+        "today_pct": 0.0091, "pct_diff": 0.005, "volume_ratio": 0.12,
+        "category": "持续强化", "feature": "龙1，最增量",
+        "factors": {
+            "price_pctile_60": 75, "price_pctile_20": 80,
+            "vol_ratio_20": 1.42, "vol_pctile_20": 70,
+            "ma_alignment": "多头", "pct_normalized": 1.3,
+            "new_high_20d": False, "new_low_20d": False,
+        },
+    }
+    if market == "US":
+        base["factors"]["ma150_dist"] = 4.5
+        base["factors"]["ma150_relation"] = "站上"
+    base.update(overrides)
+    return base
+
+
+def test_compress_a_short_keys():
+    t = _mk_ticker("A")
+    c = _compress_ticker(t, "A")
+    assert c["c"] == "SH510050"
+    assert c["pct"] == 0.91   # 0.0091 → 0.91%
+    assert c[SHORT_KEYS["price_pctile_60"]] == 75
+    assert c[SHORT_KEYS["vol_ratio_20"]] == 1.4
+    assert c[SHORT_KEYS["ma_alignment"]] == 1     # 多头 → 1
+    assert c[SHORT_KEYS["category"]] == 1         # 持续强化 → 1
+    assert SHORT_KEYS["ma150_dist"] not in c       # A 股不出现 md
+
+
+def test_compress_us_includes_ma150():
+    t = _mk_ticker("US")
+    c = _compress_ticker(t, "US")
+    assert c[SHORT_KEYS["ma150_dist"]] == 4.5
+    assert c[SHORT_KEYS["ma150_relation"]] == 1   # 站上 → 1
+
+
+def test_compress_none_factors_safe():
+    t = _mk_ticker("A")
+    t["factors"]["price_pctile_60"] = None
+    t["factors"]["ma_alignment"] = None
+    c = _compress_ticker(t, "A")
+    assert c[SHORT_KEYS["price_pctile_60"]] is None
+    assert c[SHORT_KEYS["ma_alignment"]] is None
+
+
+def test_build_prompt_contains_sections_a():
+    session = {
+        "label": "2026-05-20-收", "market": "A", "session_time": "close",
+        "tickers": [_mk_ticker("A")],
+        "panel": {"up_count": 15, "down_count": 24, "cross_asset_state": {}},
+    }
+    history = [{"label": "2026-05-19-收", "narrative": {
+        "is_skeleton": True, "session_summary": "x"}, "tickers": []}]
+    p = build_prompt("A", session, history)
+
+    # 含 A 股专属人格名
+    assert "yangjia_emotion_cycle" in p
+    assert "zhaolaoge_liquidity_focus" in p
+    assert "fengliu_contrarian_check" in p
+    # 含短键映射说明
+    assert "短键映射" in p
+    # 含历史段
+    assert "[骨架]" in p  # 历史 backfill 标记
+    # 含当前 panel
+    assert "up_count" in p
+    # 含 schema enum 白名单
+    assert "冰点" in p   # ENUM_YANGJIA_STAGE
+    # 含任务说明
+    assert "2026-05-20-收" in p
+
+
+def test_build_prompt_contains_sections_us():
+    session = {
+        "label": "2026-05-20", "market": "US", "session_time": "close",
+        "tickers": [_mk_ticker("US")],
+        "panel": {"above_ma150_count": 24, "spy_iwm_divergence": 0.005,
+                  "cross_asset_state": {}},
+    }
+    p = build_prompt("US", session, [])
+    assert "druckenmiller_macro_check" in p
+    assert "minervini_breadth_check" in p
+    assert "wyckoff_breakout_check" in p
+    assert "weinstein_stage_check" in p
+    assert "紧缩避险" in p
+
+
+def test_annotation_trail_block_with_data():
+    session = {"label": "L_now", "tickers": [_mk_ticker()], "panel": {}}
+    history = [
+        {"label": "L1", "narrative": None, "tickers": [
+            {"code": "SH510050", "annotation": {"color": "#FFE4B5", "note": "缩量"}}]},
+        {"label": "L2", "narrative": None, "tickers": [
+            {"code": "SH510050", "annotation": {"color": "#DDA0DD", "note": "反包"}}]},
+    ]
+    p = build_prompt("A", session, history)
+    assert "批注轨迹" in p
+    assert "SH510050" in p
+    assert "缩量" in p
+    assert "反包" in p
+
+
+def test_annotation_trail_empty():
+    session = {"label": "L_now", "tickers": [_mk_ticker()], "panel": {}}
+    p = build_prompt("A", session, [])
+    assert "批注轨迹" in p and "（无）" in p

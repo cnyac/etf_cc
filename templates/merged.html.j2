@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>{{ aligned.today_date }} 多时段合并研判报告</title>
+<style>
+  body { font-family: 'Times New Roman', '仿宋_GB2312', sans-serif; font-size: 1.0em; line-height: 1.6; max-width: 1400px; margin: 24px auto; padding: 0 16px; color: #222; }
+  h1 { font-family: 'Times New Roman', '华文中宋', serif; font-weight: bold; font-size: 2em; text-align: center; }
+  h2 { font-family: 'Times New Roman', '黑体', sans-serif; font-size: 1.5em; margin-top: 32px; border-bottom: 2px solid #333; padding-bottom: 4px; }
+  h3 { font-family: 'Times New Roman', '楷体_GB2312', serif; font-weight: bold; font-size: 1.3em; margin-top: 24px; }
+  h4 { font-size: 1.1em; margin-top: 16px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.92em; }
+  th, td { border: 1px solid #999; padding: 5px 8px; text-align: center; vertical-align: middle; }
+  th { background: #f0f0f0; font-weight: bold; }
+  td.analysis { text-align: left; line-height: 1.5; min-width: 240px; }
+  .up { color: #FF0000; font-weight: bold; }
+  .down { color: #00008B; font-weight: bold; }
+  .session-label { color: #666; font-style: italic; }
+  .summary-block { background: #fafafa; border-left: 4px solid #888; padding: 12px 16px; margin: 12px 0; line-height: 1.8; }
+  .warn-up { background-color: #ffe6e6; color: #FF0000; font-size: 1.8em; font-family: '黑体', sans-serif; font-weight: bold; text-align: center; padding: 20px; border: 6px solid #FF0000; margin: 24px 0; }
+  .warn-down { background-color: #e6f0fa; color: #00008B; font-size: 1.8em; font-family: '黑体', sans-serif; font-weight: bold; text-align: center; padding: 20px; border: 6px solid #00008B; margin: 24px 0; }
+  .macro-section { background: #fdfdfd; border: 1px solid #ddd; padding: 16px 20px; margin: 16px 0; }
+  .cycle-card { background-color: #f8f9fa; border-left: 6px solid #333; padding: 20px; margin: 30px 0; }
+  .conclusion-grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; }
+  .conclusion-grid .key { font-weight: bold; color: #555; }
+  .rating-大加强 { color: #FF0000; font-weight: bold; }
+  .rating-加强 { color: #cc0000; }
+  .rating-减弱 { color: #003388; }
+  .rating-大减弱 { color: #00008B; font-weight: bold; }
+</style>
+</head>
+<body>
+
+{% set a = aligned %}
+{% if a.resonance == "up" %}<div class="warn-up">🚨 共振起爆：超70%品种上涨 🚨</div>{% endif %}
+{% if a.resonance == "down" %}<div class="warn-down">⚠️ 共振杀跌：超70%品种下跌 ⚠️</div>{% endif %}
+
+<h1>{{ a.today_date }} 多时段合并研判报告</h1>
+<p style="text-align:center;color:#666;">
+  本次合并时段：{% for s in snapshots %}{{ s.session_label }}{% if not loop.last %} ← {% endif %}{% endfor %}
+</p>
+
+<h2>第一部分 · 数据驱动的四象限剖析（含跨时段堆叠）</h2>
+
+{% set cat_order = ["持续强化", "强反转", "反包修复", "连续杀跌"] %}
+{% set cat_labels = {"持续强化": "一、持续强化类", "强反转": "二、强反转类", "反包修复": "三、反包修复类", "连续杀跌": "四、连续杀跌类"} %}
+
+{% for cat in cat_order %}
+{% set group = a.groups[cat] %}
+<h3>{{ cat_labels[cat] }}（T0 共 {{ group|length }} 个，占 {{ a.stats[cat].pct }}%）</h3>
+
+<table>
+<thead>
+<tr>
+  <th>名称</th><th>时段</th><th>今涨幅</th><th>昨涨幅</th>
+  <th>涨跌幅差值</th><th>成交额环比</th>
+  <th>归类特征</th><th>归类</th><th>符合情况</th><th>原因分析</th>
+</tr>
+</thead>
+<tbody>
+{% for it in group %}
+  {# 历史时段行（逆序，从最旧到最新 T0）#}
+  {% for h in it.timeline|reverse %}
+  <tr style="background:#fafafa;">
+    <td class="session-label">{{ it.name }}</td>
+    <td class="session-label">{{ h.label }}</td>
+    <td class="{{ 'up' if h.today_pct > 0 else ('down' if h.today_pct < 0 else '') }}">{{ '%+.2f%%'|format(h.today_pct * 100) }}</td>
+    <td class="{{ 'up' if h.yest_pct > 0 else ('down' if h.yest_pct < 0 else '') }}">{{ '%+.2f%%'|format(h.yest_pct * 100) }}</td>
+    <td class="{{ 'up' if h.pct_diff > 0 else ('down' if h.pct_diff < 0 else '') }}">{{ '%+.2f%%'|format(h.pct_diff * 100) }}</td>
+    <td class="{{ 'up' if h.volume_ratio > 0 else 'down' }}">{{ '%+.2f%%'|format(h.volume_ratio * 100) }}</td>
+    <td>{{ h.feature }}</td>
+    <td>{{ h.category }}</td>
+    <td>{{ h.compliance }}</td>
+    <td class="analysis">{{ h.analysis | safe }}</td>
+  </tr>
+  {% endfor %}
+  {# T0 行 #}
+  <tr>
+    <td><strong>{{ it.name }}</strong></td>
+    <td><strong>{{ a.session_label }}</strong></td>
+    <td class="{{ 'up' if it.today_pct > 0 else ('down' if it.today_pct < 0 else '') }}">{{ '%+.2f%%'|format(it.today_pct * 100) }}</td>
+    <td class="{{ 'up' if it.yest_pct > 0 else ('down' if it.yest_pct < 0 else '') }}">{{ '%+.2f%%'|format(it.yest_pct * 100) }}</td>
+    <td class="{{ 'up' if it.pct_diff > 0 else ('down' if it.pct_diff < 0 else '') }}">{{ '%+.2f%%'|format(it.pct_diff * 100) }}</td>
+    <td class="{{ 'up' if it.volume_ratio > 0 else 'down' }}">{{ '%+.2f%%'|format(it.volume_ratio * 100) }}</td>
+    <td>{{ it.feature }}</td>
+    <td>{{ it.category }}</td>
+    <td>{{ it.compliance }}</td>
+    <td class="analysis">{{ it.analysis | safe }}</td>
+  </tr>
+{% endfor %}
+</tbody>
+</table>
+
+<div class="summary-block"><strong>本分类分析小结：</strong><br>{{ macro.category_summaries[cat] | safe }}</div>
+{% endfor %}
+
+{% if macro.unique_anomaly_analysis %}
+<h2>独特异象追踪分析</h2>
+<div class="summary-block">{{ macro.unique_anomaly_analysis | safe }}</div>
+{% endif %}
+
+<h2>跨日追踪表（昨日收盘 → T0 当前）</h2>
+<table>
+<thead>
+<tr><th>品种</th><th>昨日特征</th><th>昨日归类</th><th>当前特征</th><th>当前归类</th><th>变化评级</th><th>理由</th></tr>
+</thead>
+<tbody>
+{% for c in rating_candidates %}
+{% set rating_obj = (macro.feature_change_ratings | selectattr("name", "equalto", c.name) | list | first) %}
+<tr>
+  <td>{{ c.name }}</td>
+  <td>{{ c.yesterday_feature }}</td>
+  <td>{{ c.yesterday_category }}</td>
+  <td>{{ c.current_feature }}</td>
+  <td>{{ c.current_category }}</td>
+  <td class="rating-{{ rating_obj.rating if rating_obj else '' }}">{{ rating_obj.rating if rating_obj else '—' }}</td>
+  <td style="text-align:left;">{{ rating_obj.reason if rating_obj else '' }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<h2>第二部分 · 宏观研判</h2>
+
+<div class="macro-section">
+<h3>1. 市场资金全景图</h3>
+<p style="font-size:1.15em;font-weight:bold;">{{ macro.macro_panorama.headline }}</p>
+{% for p in macro.macro_panorama.paragraphs %}<p>{{ p }}</p>{% endfor %}
+</div>
+
+<div class="macro-section">
+<h3>2. 关键异动板块解读</h3>
+{% for m in macro.key_movers %}
+<h4>▸ {{ m.sector }}</h4>
+<p><strong>现象：</strong>{{ m.phenomenon }}</p>
+<p><strong>动因：</strong>{{ m.driver }}</p>
+<p><strong>推演：</strong>{{ m.scenario }}</p>
+{% endfor %}
+</div>
+
+<div class="macro-section">
+<h3>3. 交叉验证与资金行为解码</h3>
+<p>{{ macro.cross_validation | safe }}</p>
+</div>
+
+<div class="macro-section">
+<h3>4. 结论与策略前瞻</h3>
+<div class="conclusion-grid">
+  <div class="key">市场阶段</div><div>{{ macro.conclusion.stage }}</div>
+  <div class="key">主攻方向</div><div>{{ macro.conclusion.attack_direction }}</div>
+  <div class="key">出逃方向</div><div>{{ macro.conclusion.retreat_direction }}</div>
+  <div class="key">潜在风险</div><div>{{ macro.conclusion.risks }}</div>
+  <div class="key">大势预判</div><div><strong>{{ macro.conclusion.trend }}</strong></div>
+  <div class="key">风格定调</div><div><strong>{{ macro.conclusion.style }}</strong></div>
+  <div class="key">核心关注</div><div>{{ macro.conclusion.watch }}</div>
+</div>
+</div>
+
+{% if macro._votes %}
+<div class="macro-section" style="background:#fffbe6;border-left:6px solid #f0a000;">
+<h3>🗳️ 多次采样投票详情（共 {{ macro._sample_count }} 次）</h3>
+<p style="color:#666;font-size:0.9em;">
+  本次合并跑了 {{ macro._sample_count }} 次宏观研判，关键结论按投票多数派选定。
+  自由文本字段（主攻/出逃/风险/关注）保留首次结果但并列展示所有版本，供你识别模型分歧。
+</p>
+
+<h4>枚举字段投票</h4>
+<table>
+<tr><th>字段</th><th>胜出</th><th>投票分布</th><th>所有原始答案</th></tr>
+<tr>
+  <td>大势预判 (trend)</td>
+  <td><strong>{{ macro._votes.trend.winner }}</strong></td>
+  <td>{% for k, v in macro._votes.trend.votes.items() %}{{ k }}: {{ v }} 票{% if not loop.last %} / {% endif %}{% endfor %}</td>
+  <td>{{ macro._votes.trend.all | join(' / ') }}</td>
+</tr>
+<tr>
+  <td>风格定调 (style)</td>
+  <td><strong>{{ macro._votes.style.winner }}</strong></td>
+  <td>{% for k, v in macro._votes.style.votes.items() %}{{ k }}: {{ v }} 票{% if not loop.last %} / {% endif %}{% endfor %}</td>
+  <td>{{ macro._votes.style.all | join(' / ') }}</td>
+</tr>
+<tr>
+  <td>市场阶段 (stage)</td>
+  <td><strong>{{ macro._votes.stage.winner }}</strong></td>
+  <td>{% if macro._votes.stage.clusters %}{% for k, v in macro._votes.stage.clusters.items() %}「{{ k }}」: {{ v }} 票{% if not loop.last %} / {% endif %}{% endfor %} <em>（语义聚类后）</em>{% else %}{% for k, v in macro._votes.stage.votes.items() %}{{ k }}: {{ v }} 票{% if not loop.last %} / {% endif %}{% endfor %}{% endif %}</td>
+  <td>{{ macro._votes.stage.all | join(' / ') }}</td>
+</tr>
+</table>
+
+<h4>自由文本字段（三次结果并列）</h4>
+<table>
+<tr><th>字段</th><th>第 1 次</th><th>第 2 次</th><th>第 3 次</th></tr>
+{% for key, label in [('attack_direction', '主攻方向'), ('retreat_direction', '出逃方向'), ('risks', '潜在风险'), ('watch', '核心关注')] %}
+<tr>
+  <td>{{ label }}</td>
+  {% for v in macro._votes[key].all %}<td style="text-align:left;font-size:0.9em;">{{ v }}</td>{% endfor %}
+</tr>
+{% endfor %}
+</table>
+
+<p style="font-size:0.85em;color:#888;margin-top:12px;">
+  💡 如果三次结果差异显著（比如 trend 投出 2:1），说明模型对当前行情的判断本身就模棱两可，这是个有用的元信号——市场可能确实处于难判定的过渡区域。
+</p>
+</div>
+{% endif %}
+
+{% if macro.macro_cycle %}
+<div class="cycle-card">
+<h3>第三部分 · 宏观周期定位与历史极值映射</h3>
+<h4>1. 当前资产图谱提炼</h4>
+<p>{{ macro.macro_cycle.current_profile }}</p>
+<h4>2. 历史极值时空定位</h4>
+<ul>
+<li><strong>对标年份：</strong>{{ macro.macro_cycle.historical.year }}</li>
+<li><strong>标志事件：</strong>{{ macro.macro_cycle.historical.event }}</li>
+<li><strong>宏观阶段：</strong>{{ macro.macro_cycle.historical.phase }}</li>
+<li><strong>简述：</strong>{{ macro.macro_cycle.historical.brief }}</li>
+</ul>
+<h4>3. 跨时空异同对比</h4>
+<p><strong>形似点：</strong>{{ macro.macro_cycle.similarity }}</p>
+<p><strong>神异点：</strong>{{ macro.macro_cycle.difference }}</p>
+<h4>4. 沙盘推演</h4>
+<p><strong>黑天鹅风险：</strong>{{ macro.macro_cycle.risk }}</p>
+<p><strong>隐蔽机会：</strong>{{ macro.macro_cycle.opportunity }}</p>
+</div>
+{% endif %}
+
+<div style="background:#f8f9fa;border-left:6px solid #333;padding:16px;margin-top:32px;font-family:monospace;font-size:0.9em;">
+<strong>审计日志</strong><br>
+▸ 合并时段数：{{ snapshots|length }}<br>
+▸ T0 品种数：{{ a.total }}<br>
+▸ T0 分类合计校验：{{ a.stats["持续强化"].count + a.stats["强反转"].count + a.stats["反包修复"].count + a.stats["连续杀跌"].count }} = {{ a.total }} {% if a.stats["持续强化"].count + a.stats["强反转"].count + a.stats["反包修复"].count + a.stats["连续杀跌"].count == a.total %}✓{% else %}❌{% endif %}<br>
+▸ 跨日追踪表品种数：{{ rating_candidates|length }}<br>
+▸ 数据由 Python 确定性计算；分类小结、跨日评级、宏观研判由 Claude Opus 生成。
+</div>
+
+</body>
+</html>

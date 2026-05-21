@@ -1,0 +1,818 @@
+{# 单文件自包含报告 - 双市场共用 #}
+{# 变量约定：
+   - market: "A" | "US"
+   - label: 当前 session 的 label
+   - session: 当前 session dict
+   - history: 近 N 个 session（不含当前）
+   - name_map: code -> 中文名
+   - known_palette: list[{hex, name}]
+   - market_label: "A 股" 或 "美股"
+#}
+{# ===================== Jinja macros ===================== #}
+{% macro persona_card(field_name, title, data) %}
+  <div class="persona-card{% if not data %} null{% endif %}">
+    <div class="field-name">{{ title }}</div>
+    {% if not data %}
+      <div>—（候选 0 或字段缺失）</div>
+    {% else %}
+      {% for k, v in data.items() if k not in ('what_kills_this_view', 'free_analysis') %}
+        <div class="kv"><span class="key">{{ k }}:</span>
+          {% if v is mapping or (v is iterable and v is not string) %}
+            {{ v | tojson }}
+          {% else %}{{ v }}{% endif %}
+        </div>
+      {% endfor %}
+      {% if data.free_analysis %}
+        <div class="free-analysis">{{ data.free_analysis }}</div>
+      {% endif %}
+      {% if data.what_kills_this_view %}
+        <div class="kills">证伪条件：{{ data.what_kills_this_view }}</div>
+      {% endif %}
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{% macro category_table(rows) %}
+<table>
+  <thead>
+    <tr>
+      <th style="width:88px">代码</th>
+      <th style="width:140px">名称</th>
+      <th style="width:70px">涨幅</th>
+      <th style="width:60px">差值</th>
+      <th style="width:70px">量能</th>
+      <th style="width:70px">价位</th>
+      <th style="width:50px">均线</th>
+      <th>标签 / LLM 点评</th>
+      <th style="width:280px">批注（点击行编辑）</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    {% set f = r.factors or {} %}
+    {% set pn = f.pct_normalized %}
+    {% set outlier = (pn is not none and (pn > 2 or pn < -2)) %}
+    <tr data-code="{{ r.code }}" class="tr-clickable{% if outlier %} outlier-row{% endif %}">
+      <td>{{ r.code[2:] if r.code|length > 6 else r.code }}{% if r.new_high_20d %} <span class="up">★</span>{% elif r.new_low_20d %} <span class="down">▼</span>{% endif %}{% if outlier %} <span class="warn">⚠</span>{% endif %}</td>
+      <td>{{ r.name or '' }}</td>
+      <td class="num">
+        <span class="{{ pct_class(r.today_pct) }}">{{ pct_fmt(r.today_pct) }}</span><br>
+        <span class="muted">{{ pct_fmt(r.yest_pct) }}</span>
+      </td>
+      <td class="num"><span class="{{ pct_class(r.pct_diff) }}">{{ pct_fmt(r.pct_diff) }}</span></td>
+      <td class="num">
+        {% if f.vol_ratio_20 is not none %}{{ '%.2fx'|format(f.vol_ratio_20) }}{% else %}—{% endif %}<br>
+        <span class="muted">{% if f.vol_pctile_20 is not none %}P{{ f.vol_pctile_20 }}{% endif %}</span>
+      </td>
+      <td class="num">
+        {% if f.price_pctile_60 is not none %}P{{ f.price_pctile_60 }}{% else %}—{% endif %}<br>
+        <span class="muted">{% if f.price_pctile_20 is not none %}P{{ f.price_pctile_20 }}{% endif %}</span>
+      </td>
+      <td class="center" title="收盘价 vs MA5 / MA20 / MA60（红=上方 蓝=下方 灰=近 ±0.5%）">
+        <span class="ma-dots">
+          <span class="ma-dot ma-dot-{{ f.close_vs_ma5 or 'na' }}" title="MA5"></span>
+          <span class="ma-dot ma-dot-{{ f.close_vs_ma20 or 'na' }}" title="MA20"></span>
+          <span class="ma-dot ma-dot-{{ f.close_vs_ma60 or 'na' }}" title="MA60"></span>
+        </span>
+      </td>
+      <td>
+        {% if r.feature %}
+          <div class="tag-row">
+          {% for tag in r.feature.split('，') %}
+            <span class="badge {% if '龙1' in tag or '修复龙1' in tag %}badge-long1{% elif '最增量' in tag %}badge-vol-plus{% elif '最缩量' in tag %}badge-vol-minus{% endif %}">{{ tag }}</span>
+          {% endfor %}
+          </div>
+        {% endif %}
+        {% if r.analysis %}
+          <div class="llm-analysis">{{ r.analysis }}</div>
+        {% endif %}
+      </td>
+      <td class="annotation-cell" data-anno-cell-for="{{ r.code }}">
+        <span class="muted ann-placeholder">点击行编辑批注</span>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro tracking_table(history, current, codes) %}
+{% set recent = (history + [current])[-3:] %}
+<table>
+  <thead>
+    <tr>
+      <th>代码</th><th>名称</th>
+      {% for s in recent %}<th>{{ s.label }}</th>{% endfor %}
+      <th>20日走势</th><th>变化评级</th><th>评级理由</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for code in codes %}
+    {% set name = name_map.get(code, '') %}
+    <tr>
+      <td>{{ code[2:] if code|length > 6 else code }}</td>
+      <td>{{ name }}</td>
+      {% for s in recent %}
+        {% set t = (s.tickers | selectattr('code', 'equalto', code) | first) %}
+        {% if t %}
+          {% set f = t.factors or {} %}
+          <td>
+            <span class="{{ pct_class(t.today_pct) }}">{{ pct_fmt(t.today_pct) }}</span><br>
+            <span class="muted">{% if f.vol_ratio_20 is not none %}{{ '%.1fx'|format(f.vol_ratio_20) }}{% endif %}</span><br>
+            <span class="muted">{{ t.feature or '—' }}</span>
+          </td>
+        {% else %}<td class="muted">—</td>{% endif %}
+      {% endfor %}
+      <td>{{ sparkline(code) }}</td>
+      <td class="center muted">—</td>
+      <td class="muted">—</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro sparkline(code) %}
+  {# 从 spark_data dict 取该 code 的真实收盘价序列 #}
+  {% set pts = spark_data.get(code, []) %}
+  {% if pts|length < 5 %}<span class="muted">—</span>{% else %}
+    {% set w = 100 %}{% set h = 28 %}
+    {% set hi = pts | max %}{% set lo = pts | min %}
+    {% set rng = (hi - lo) if (hi - lo) > 0 else (hi if hi > 0 else 1) %}
+    {% set last_x = (pts|length - 1) * (w / (pts|length - 1)) %}
+    {% set last_y = h - ((pts[-1] - lo) / rng) * h %}
+    {% set up = pts[-1] >= pts[0] %}
+    <svg class="sparkline" width="{{w}}" height="{{h}}" viewBox="0 0 {{w}} {{h}}">
+      <polyline fill="none" stroke="{{ '#FF0000' if up else '#00008B' }}" stroke-width="1.2"
+        points="{%- for v in pts -%}{{ loop.index0 * (w / (pts|length - 1)) }},{{ h - ((v - lo) / rng) * h }} {% endfor -%}" />
+      <circle cx="{{ last_x }}" cy="{{ last_y }}" r="2" fill="{{ '#FF0000' if up else '#00008B' }}" />
+    </svg>
+  {% endif %}
+{% endmacro %}
+
+{% macro matrix_view(sessions, codes) %}
+{% set recent = sessions[-20:] %}
+<table class="matrix-table">
+  <thead>
+    <tr>
+      <th style="width:60px">代码</th>
+      <th style="width:140px">名称</th>
+      {% for s in recent %}<th>{{ s.label[5:10] if s.label|length > 10 else s.label }}</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for code in codes %}
+    <tr>
+      <td><span class="muted">{{ code[2:] if code|length > 6 else code }}</span></td>
+      <td>{{ name_map.get(code, '') }}</td>
+      {% for s in recent %}
+        {% set t = (s.tickers | selectattr('code', 'equalto', code) | first) %}
+        {% if t %}
+          {% set cls = {'持续强化': 'matrix-cell-c1', '反包修复': 'matrix-cell-c2', '强反转': 'matrix-cell-c3', '连续杀跌': 'matrix-cell-c4'}.get(t.category, '') %}
+          <td class="{{ cls }}">
+            {% if t.feature %}{{ t.feature.split('，')[0] }}{% else %}—{% endif %}
+          </td>
+        {% else %}<td>—</td>{% endif %}
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{{ label }} - {{ market_label }}量价分析</title>
+<style>
+:root {
+  --color-up: #FF0000;
+  --color-down: #00008B;
+  --color-flat: #000000;
+  --color-warn: #FFA500;
+  --gray: #888;
+  --gray-light: #ddd;
+}
+body {
+  font-family: "仿宋_GB2312", "FangSong", "STFangsong", serif;
+  font-size: 1.5em;
+  color: #222;
+  margin: 0;
+  padding: 0 24px 80px 24px;
+  background: #fafafa;
+}
+h1 {
+  font-family: "华文中宋", "STZhongsong", "STSong", serif;
+  font-size: 2em;
+  font-weight: bold;
+  margin: 24px 0 12px;
+}
+h2 {
+  font-family: "黑体", "SimHei", sans-serif;
+  font-size: 1.5em;
+  font-weight: normal;
+  margin: 24px 0 12px;
+  border-left: 4px solid #555;
+  padding-left: 10px;
+}
+h3 {
+  font-family: "楷体_GB2312", "KaiTi", "STKaiti", serif;
+  font-size: 1.5em;
+  font-weight: bold;
+  margin: 16px 0 8px;
+}
+.up { color: var(--color-up); }
+.down { color: var(--color-down); }
+.flat { color: var(--color-flat); }
+.muted { color: var(--gray); font-size: 0.7em; }
+.warn { color: var(--color-warn); font-weight: bold; }
+.outlier-row td {
+  border-top: 2px solid var(--color-warn) !important;
+  border-bottom: 2px solid var(--color-warn) !important;
+}
+.outlier-row td:first-child {
+  border-left: 4px solid var(--color-warn) !important;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 16px;
+  background: white;
+}
+th, td {
+  border: 1px solid var(--gray-light);
+  padding: 6px 8px;
+  vertical-align: top;
+  font-size: 0.7em;
+  text-align: left;
+}
+th {
+  background: #f0f0f0;
+  font-family: "黑体", sans-serif;
+  font-weight: normal;
+  text-align: center;
+}
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.center { text-align: center; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-right: 4px;
+  border-radius: 3px;
+  font-size: 0.7em;
+  background: #eee;
+  border: 1px solid #ccc;
+}
+.badge-long1 { background: #ffe4e1; border-color: #ff9090; }
+.badge-vol-plus { background: #ffe8e8; border-color: #ff7070; }
+.badge-vol-minus { background: #e3f2fd; border-color: #42a5f5; }
+
+.tag-row { margin-bottom: 4px; }
+.llm-analysis {
+  font-family: "仿宋_GB2312", "FangSong", serif;
+  font-size: 0.95em;
+  line-height: 1.5;
+  color: #333;
+  margin-top: 2px;
+}
+.annotation-cell {
+  font-family: "仿宋_GB2312", "FangSong", serif;
+  font-size: 0.95em;
+  line-height: 1.5;
+  color: #222;
+  white-space: pre-wrap;
+}
+.annotation-cell .ann-placeholder { font-size: 0.85em; }
+
+/* 三球：红=above, 深蓝=below, 灰=near。避免绿色（用户色盲） */
+.ma-dots { display: inline-flex; gap: 2px; align-items: center; }
+.ma-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 1px solid #999;
+  font-size: 0;
+}
+.ma-dot-above { background: #FF0000; }
+.ma-dot-below { background: #00008B; }
+.ma-dot-near { background: #cccccc; }
+.ma-dot-na { background: transparent; }
+
+.cross-asset {
+  display: inline-flex;
+  gap: 12px;
+  padding: 4px 0;
+}
+.cross-asset .item { font-size: 0.7em; }
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+.panel-cell {
+  background: white;
+  border: 1px solid var(--gray-light);
+  padding: 8px;
+  border-radius: 4px;
+}
+.panel-cell .label { font-size: 0.6em; color: var(--gray); }
+.panel-cell .value { font-size: 0.9em; font-weight: bold; margin-top: 2px; }
+
+.persona-card {
+  background: white;
+  border: 1px solid var(--gray-light);
+  border-left: 4px solid #888;
+  padding: 12px;
+  margin: 8px 0;
+  font-size: 0.7em;
+}
+.persona-card .field-name {
+  font-family: "黑体", sans-serif;
+  font-weight: bold;
+  font-size: 0.9em;
+  color: #444;
+  margin-bottom: 6px;
+}
+.persona-card .kv { margin: 4px 0; }
+.persona-card .key { color: var(--gray); margin-right: 6px; }
+.persona-card.null { opacity: 0.5; font-style: italic; }
+.persona-card .kills {
+  border-top: 1px dashed #ccc;
+  margin-top: 6px;
+  padding-top: 6px;
+  font-size: 0.85em;
+  color: #555;
+}
+.persona-card .free-analysis {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #fafafa;
+  border-radius: 3px;
+  font-family: "仿宋_GB2312", "FangSong", serif;
+  font-size: 1em;
+  line-height: 1.6;
+  color: #222;
+}
+
+.sparkline { display: inline-block; vertical-align: middle; }
+
+.matrix-table td {
+  font-size: 0.6em;
+  text-align: center;
+  padding: 3px 4px;
+}
+.matrix-cell-c1 { background: #ffebee; }  /* 持续强化 浅红 */
+.matrix-cell-c2 { background: #fce4ec; }  /* 反包修复 浅粉 */
+.matrix-cell-c3 { background: #e3f2fd; }  /* 强反转 浅蓝 */
+.matrix-cell-c4 { background: #f5f5f5; }  /* 连续杀跌 灰 */
+
+#unsaved-banner {
+  position: sticky;
+  top: 0;
+  background: var(--color-up);
+  color: white;
+  padding: 8px;
+  text-align: center;
+  display: none;
+  z-index: 100;
+  font-size: 0.8em;
+}
+#unsaved-banner.show { display: block; }
+
+#save-watermark {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  font-size: 0.5em;
+  color: var(--gray);
+  background: rgba(255,255,255,0.9);
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+
+.tr-clickable { cursor: pointer; }
+.tr-clickable:hover { background: #fffbeb; }
+
+#ann-modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+#ann-modal.show { display: flex; }
+#ann-modal .box {
+  background: white;
+  padding: 20px;
+  border-radius: 6px;
+  min-width: 320px;
+  max-width: 480px;
+  font-size: 0.7em;
+}
+#ann-modal h3 { margin-top: 0; font-size: 1em; }
+#ann-modal .palette { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+#ann-modal .swatch {
+  width: 28px; height: 28px;
+  border: 2px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#ann-modal .swatch.selected { border-color: #222; border-width: 3px; }
+#ann-modal textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 1em;
+  padding: 6px;
+  margin-top: 6px;
+  box-sizing: border-box;
+  min-height: 60px;
+}
+#ann-modal .actions { margin-top: 12px; text-align: right; }
+#ann-modal button {
+  font-family: inherit;
+  font-size: 0.9em;
+  padding: 4px 14px;
+  margin-left: 6px;
+  cursor: pointer;
+}
+
+#save-btn {
+  position: fixed;
+  right: 12px;
+  bottom: 50px;
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 8px 16px;
+  background: var(--color-up);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 50;
+}
+</style>
+</head>
+<body>
+
+<div id="unsaved-banner">⚠ 有未保存的批注，请点击右下角"保存"按钮下载新文件</div>
+
+<h1>{{ label }}（{{ market_label }}）</h1>
+
+{# ============ §1 盘面概览 ============ #}
+<h2>§1 盘面概览</h2>
+{% set p = session.panel %}
+<div class="panel-grid">
+  <div class="panel-cell">
+    <div class="label">上涨/下跌/平</div>
+    <div class="value"><span class="up">{{ p.up_count }}</span> / <span class="down">{{ p.down_count }}</span> / {{ p.flat_count }}</div>
+  </div>
+  <div class="panel-cell">
+    <div class="label">强势/强跌</div>
+    <div class="value"><span class="up">{{ p.strong_up_count }}</span> / <span class="down">{{ p.strong_down_count }}</span></div>
+  </div>
+  <div class="panel-cell">
+    <div class="label">量能扩张/收缩</div>
+    <div class="value">{{ p.vol_expansion_count }} / {{ p.vol_contraction_count }}</div>
+  </div>
+  <div class="panel-cell">
+    <div class="label">20日新高/新低</div>
+    <div class="value"><span class="up">{{ p.new_high_count_20d }}</span> / <span class="down">{{ p.new_low_count_20d }}</span></div>
+  </div>
+  {% if market == "US" %}
+  <div class="panel-cell">
+    <div class="label">站上 MA150</div>
+    <div class="value">{{ p.above_ma150_count }}</div>
+  </div>
+  <div class="panel-cell">
+    <div class="label">SPY-IWM 分化</div>
+    <div class="value">
+      {% set d = p.spy_iwm_divergence %}
+      {% if d is none %}—{% else %}
+      <span class="{{ 'up' if d > 0 else ('down' if d < 0 else 'flat') }}">
+        {{ '%+.2f%%'|format(d * 100) }}
+      </span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<h3>分类分布</h3>
+{% set cd = p.category_distribution or {} %}
+{% set total = (p.up_count + p.down_count + p.flat_count) or 1 %}
+{% set dom = cd.items() | list | sort(attribute=1, reverse=True) | first %}
+<div class="cross-asset">
+{% for cat in ['持续强化', '反包修复', '强反转', '连续杀跌'] %}
+  {% set n = cd.get(cat, 0) %}
+  {% set pct = (n / total * 100) | round(1) %}
+  <div class="item">
+    {{ cat }}: <b>{{ n }}</b>
+    <span class="muted">({{ pct }}%{% if dom and cat == dom[0] %} · 主导{% endif %})</span>
+  </div>
+{% endfor %}
+</div>
+
+<h3>跨资产</h3>
+<div class="cross-asset">
+{% for dim, val in p.cross_asset_state.items() %}
+  <div class="item">
+    {{ dim }}:
+    {% if val == "up" %}<span class="up">↑</span>
+    {% elif val == "down" %}<span class="down">↓</span>
+    {% elif val == "flat" %}<span class="flat">—</span>
+    {% else %}<span class="muted">N/A</span>{% endif %}
+  </div>
+{% endfor %}
+</div>
+
+{# ============ §2 双引擎人格 ============ #}
+<h2>§2 时段叙事</h2>
+{% set n = session.narrative %}
+{% if n %}
+  {% if n.is_skeleton %}
+    <p class="muted">[骨架 Python 生成] {{ n.session_summary }}</p>
+  {% else %}
+    <p>{{ n.session_summary }}</p>
+  {% endif %}
+
+  {% if not n.is_skeleton %}
+    {% if market == "A" %}
+      {{ persona_card("yangjia_emotion_cycle", "炒股养家 · 情绪周期", n.yangjia_emotion_cycle) }}
+      {{ persona_card("zhaolaoge_liquidity_focus", "赵老哥 · 流动性聚焦", n.zhaolaoge_liquidity_focus) }}
+      {{ persona_card("fengliu_contrarian_check", "冯柳 · 逆向赔率", n.fengliu_contrarian_check) }}
+    {% else %}
+      {{ persona_card("druckenmiller_macro_check", "德鲁肯米勒 · 宏观跨资产", n.druckenmiller_macro_check) }}
+      {{ persona_card("minervini_breadth_check", "米奈尔维尼 · 市场广度", n.minervini_breadth_check) }}
+      {{ persona_card("wyckoff_breakout_check", "威科夫 · 突破质量", n.wyckoff_breakout_check) }}
+      {{ persona_card("weinstein_stage_check", "温斯坦 · 阶段判定", n.weinstein_stage_check) }}
+    {% endif %}
+  {% endif %}
+{% else %}
+  <p class="muted">narrative 未生成</p>
+{% endif %}
+
+{# ============ §3 四分类表 ============ #}
+<h2>§3 分类详情</h2>
+{% for cat in ['持续强化', '反包修复', '强反转', '连续杀跌'] %}
+  {% set rows = tickers_by_cat[cat] %}
+  {% if rows %}
+    <h3>{{ cat }}（{{ rows|length }} 只）</h3>
+    {{ category_table(rows) }}
+  {% endif %}
+{% endfor %}
+
+{# ============ §4 跨日追踪表 ============ #}
+{% if history|length >= 1 %}
+<h2>§4 跨日追踪（最近 3 时段）</h2>
+{{ tracking_table(history, session, tracking_codes) }}
+{% endif %}
+
+{# ============ §5 20 时段矩阵 ============ #}
+{% if matrix_codes %}
+<h2>§5 20 时段矩阵概览</h2>
+{{ matrix_view(history + [session], matrix_codes) }}
+{% endif %}
+
+<button id="save-btn">保存</button>
+<div id="save-watermark">未保存</div>
+
+<div id="ann-modal">
+  <div class="box">
+    <h3 id="ann-ticker"></h3>
+    <div>颜色：</div>
+    <div class="palette" id="ann-palette"></div>
+    <div>自选 hex (浅色 6 位)：<input id="ann-custom-hex" type="text" placeholder="#RRGGBB" style="width: 100px"></div>
+    <div style="margin-top: 10px;">备注：</div>
+    <textarea id="ann-note" placeholder="写下你的观察 / 关注理由"></textarea>
+    <div class="actions">
+      <button id="ann-clear">清除批注</button>
+      <button id="ann-cancel">取消</button>
+      <button id="ann-confirm">确定</button>
+    </div>
+  </div>
+</div>
+
+{# ============ 内嵌数据 ============ #}
+<script type="application/json" id="snapshot">{{ snapshot_payload | tojson }}</script>
+<script type="application/json" id="annotations">{{ annotations_payload | tojson }}</script>
+<script type="application/json" id="known_palette">{{ known_palette | tojson }}</script>
+
+<script>
+{% raw %}
+// ---------- 状态 ----------
+const SNAPSHOT = JSON.parse(document.getElementById('snapshot').textContent);
+const LABEL = SNAPSHOT.label;
+const MARKET = SNAPSHOT.market;
+const STORAGE_KEY = `etf_cc::${MARKET}::${LABEL}`;
+
+let annotations = JSON.parse(document.getElementById('annotations').textContent) || {};
+let knownPalette = JSON.parse(document.getElementById('known_palette').textContent) || [];
+let dirty = false;
+let fileHandle = null;
+
+// 启动：localStorage 优先恢复（如果比内嵌新）
+try {
+  const cached = localStorage.getItem(STORAGE_KEY);
+  if (cached) {
+    const parsed = JSON.parse(cached);
+    if (parsed && parsed.annotations) {
+      annotations = parsed.annotations;
+      dirty = parsed.dirty || false;
+      applyAllRowStyles();
+      if (dirty) showUnsaved();
+    }
+  }
+} catch (e) { console.warn('localStorage 恢复失败', e); }
+
+applyAllRowStyles();
+
+// ---------- 工具 ----------
+function $(id) { return document.getElementById(id); }
+function saveToLocal() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({annotations, dirty}));
+  } catch (e) { console.warn('localStorage 写入失败', e); }
+}
+function showUnsaved() {
+  dirty = true;
+  $('unsaved-banner').classList.add('show');
+  $('save-watermark').textContent = '未保存';
+}
+function showSaved(ts) {
+  dirty = false;
+  $('unsaved-banner').classList.remove('show');
+  $('save-watermark').textContent = '已保存 ' + ts;
+}
+function applyRowStyle(code) {
+  const tr = document.querySelector(`tr[data-code="${code}"]`);
+  if (!tr) return;
+  const ann = annotations[code];
+  const cell = document.querySelector(`[data-anno-cell-for="${code}"]`);
+  if (ann && ann.color) {
+    tr.style.backgroundColor = ann.color;
+    tr.title = ann.note || '';
+    if (cell) {
+      cell.innerHTML = '';
+      if (ann.note) {
+        cell.textContent = ann.note;
+      } else {
+        cell.innerHTML = '<span class="muted ann-placeholder">（已涂色，无备注）</span>';
+      }
+    }
+  } else {
+    tr.style.backgroundColor = '';
+    tr.title = '';
+    if (cell) {
+      cell.innerHTML = '<span class="muted ann-placeholder">点击行编辑批注</span>';
+    }
+  }
+}
+function applyAllRowStyles() {
+  document.querySelectorAll('tr[data-code]').forEach(tr => applyRowStyle(tr.dataset.code));
+}
+
+// ---------- modal ----------
+let modalCode = null;
+let modalColor = null;
+function openModal(code) {
+  modalCode = code;
+  const ann = annotations[code] || {};
+  modalColor = ann.color || null;
+  $('ann-ticker').textContent = code + (SNAPSHOT.name_map[code] ? ' ' + SNAPSHOT.name_map[code] : '');
+  $('ann-note').value = ann.note || '';
+  $('ann-custom-hex').value = '';
+  renderPalette();
+  $('ann-modal').classList.add('show');
+}
+function renderPalette() {
+  const html = knownPalette.map(c => {
+    const sel = c.hex.toUpperCase() === (modalColor || '').toUpperCase() ? ' selected' : '';
+    return `<div class="swatch${sel}" style="background:${c.hex}" data-hex="${c.hex}" title="${c.name||c.hex}"></div>`;
+  }).join('');
+  $('ann-palette').innerHTML = html;
+  $('ann-palette').querySelectorAll('.swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      modalColor = sw.dataset.hex;
+      renderPalette();
+    });
+  });
+}
+function closeModal() {
+  $('ann-modal').classList.remove('show');
+  modalCode = null;
+  modalColor = null;
+}
+$('ann-cancel').addEventListener('click', closeModal);
+$('ann-confirm').addEventListener('click', () => {
+  // 自选 hex 优先
+  const custom = $('ann-custom-hex').value.trim();
+  if (custom) {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(custom)) {
+      alert('hex 格式错误，应为 #RRGGBB');
+      return;
+    }
+    modalColor = custom.toUpperCase();
+    // 合并进 known_palette（如果是新颜色）
+    if (!knownPalette.find(c => c.hex.toUpperCase() === modalColor)) {
+      knownPalette.push({hex: modalColor, name: modalColor});
+    }
+  }
+  if (!modalColor) {
+    alert('请选颜色或填 hex');
+    return;
+  }
+  const note = $('ann-note').value.trim();
+  annotations[modalCode] = {color: modalColor, note: note};
+  applyRowStyle(modalCode);
+  showUnsaved();
+  saveToLocal();
+  closeModal();
+});
+$('ann-clear').addEventListener('click', () => {
+  delete annotations[modalCode];
+  applyRowStyle(modalCode);
+  showUnsaved();
+  saveToLocal();
+  closeModal();
+});
+
+// 行点击
+document.querySelectorAll('tr.tr-clickable').forEach(tr => {
+  tr.addEventListener('click', () => openModal(tr.dataset.code));
+});
+
+// ---------- 保存 ----------
+async function rebuildHtmlBlob() {
+  // 重新生成完整 HTML：把当前 annotations 和 knownPalette 写回 script tag，其它不动
+  const html = document.documentElement.outerHTML;
+  // 用更可靠的方式：克隆 document，修改 script 标签
+  const doc = document.implementation.createHTMLDocument('');
+  doc.documentElement.innerHTML = document.documentElement.innerHTML;
+  doc.getElementById('annotations').textContent = JSON.stringify(annotations);
+  doc.getElementById('known_palette').textContent = JSON.stringify(knownPalette);
+  // 清掉 banner show 状态
+  const banner = doc.getElementById('unsaved-banner');
+  if (banner) banner.classList.remove('show');
+  return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+}
+
+async function saveViaFsa() {
+  if (!window.showSaveFilePicker) return false;
+  try {
+    if (!fileHandle) {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: LABEL + '.html',
+        types: [{description: 'HTML', accept: {'text/html': ['.html']}}],
+      });
+    }
+    const writable = await fileHandle.createWritable();
+    const html = await rebuildHtmlBlob();
+    await writable.write(html);
+    await writable.close();
+    return true;
+  } catch (e) {
+    console.warn('FSA 保存失败', e);
+    return false;
+  }
+}
+
+async function saveViaDownload() {
+  const html = await rebuildHtmlBlob();
+  const blob = new Blob([html], {type: 'text/html'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = LABEL + '.html';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return true;
+}
+
+$('save-btn').addEventListener('click', async () => {
+  let ok = await saveViaFsa();
+  if (!ok) ok = await saveViaDownload();
+  if (ok) {
+    const ts = new Date().toLocaleTimeString();
+    showSaved(ts);
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  }
+});
+
+// 拦截关闭
+window.addEventListener('beforeunload', (e) => {
+  if (dirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+{% endraw %}
+</script>
+</body>
+</html>
+

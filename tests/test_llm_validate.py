@@ -1,0 +1,307 @@
+"""llm_validate.py 测试。
+
+覆盖（CLAUDE.md 第 6 条 "LLM 输出 enum 校验拒绝渲染"）：
+  - enum 白名单外的值 → 拒绝
+  - 缺必填字段 / 缺 what_kills_this_view → 拒绝
+  - druckenmiller 降级机制
+  - minervini 降级机制
+  - discipline_pass=false + rating_override 规则
+  - is_skeleton=true → 跳过 LLM 字段校验
+"""
+import pytest
+from src.llm_validate import validate_narrative
+
+
+# ---------- 顶层 ----------
+
+def test_skeleton_bypasses_llm_checks():
+    n = {"is_skeleton": True, "session_summary": "骨架"}
+    ok, errors = validate_narrative(n, "A")
+    assert ok, errors
+
+
+def test_missing_session_summary():
+    n = {"is_skeleton": False}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("session_summary" in e for e in errors)
+
+
+# ---------- A 股 ----------
+
+VALID_YANGJIA = {
+    "stage": "试错",
+    "intensity": "中",
+    "evidence": "上涨 15/39，强势 1 个，缩量为主，跨资产黄金 down",
+    "next_session_expect": "情绪修复或继续阴跌均可能",
+    "what_kills_this_view": "明日早盘强势 ETF >5 个且涨幅 >2%",
+    "free_analysis": "今日情绪走弱，强反转占比近半数，资金避险情绪明显。",
+}
+
+
+def test_a_yangjia_valid():
+    n = {"is_skeleton": False, "session_summary": "x", "yangjia_emotion_cycle": VALID_YANGJIA,
+         "zhaolaoge_liquidity_focus": None, "fengliu_contrarian_check": None,
+         "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A")
+    assert ok, errors
+
+
+def test_a_yangjia_bad_enum():
+    bad = {**VALID_YANGJIA, "stage": "巨牛"}
+    n = {"is_skeleton": False, "session_summary": "x", "yangjia_emotion_cycle": bad,
+         "zhaolaoge_liquidity_focus": None, "fengliu_contrarian_check": None,
+         "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("stage" in e and "白名单" in e for e in errors)
+
+
+def test_a_yangjia_missing_what_kills():
+    bad = {**VALID_YANGJIA}
+    del bad["what_kills_this_view"]
+    n = {"is_skeleton": False, "session_summary": "x", "yangjia_emotion_cycle": bad,
+         "zhaolaoge_liquidity_focus": None, "fengliu_contrarian_check": None,
+         "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("what_kills_this_view" in e for e in errors)
+
+
+def test_a_null_fields_allowed():
+    """全部分类字段 null 时（候选 0）应通过 enum 校验阶段。"""
+    n = {"is_skeleton": False, "session_summary": "今日候选稀少",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A")
+    assert ok, errors
+
+
+# ---------- A 股 discipline ----------
+
+def test_discipline_rating_override_valid():
+    review = {
+        "code": "SH510050",
+        "logic_hardness": "硬", "risk_reward_ratio": "优",
+        "discipline_pass": False,
+        "rating_override": {"keep_rating": True, "reason": "硬逻辑+量能配合"},
+        "review_note": "保留原评级",
+    }
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": [review]}
+    ok, errors = validate_narrative(n, "A")
+    assert ok, errors
+
+
+def test_discipline_rating_override_reason_too_long():
+    review = {
+        "code": "SH510050",
+        "logic_hardness": "硬", "risk_reward_ratio": "优",
+        "discipline_pass": False,
+        "rating_override": {"keep_rating": True, "reason": "x" * 40},
+        "review_note": "x",
+    }
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": [review]}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("30 字" in e for e in errors)
+
+
+def test_discipline_missing_code():
+    review = {
+        "logic_hardness": "硬", "risk_reward_ratio": "优",
+        "discipline_pass": True, "review_note": "x",
+    }
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": [review]}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("code" in e for e in errors)
+
+
+# ---------- 美股 druckenmiller 降级 ----------
+
+def _us_base_narrative(druck=None, minervini=None):
+    return {
+        "is_skeleton": False, "session_summary": "x",
+        "druckenmiller_macro_check": druck,
+        "minervini_breadth_check": minervini,
+        "wyckoff_breakout_check": None, "weinstein_stage_check": None,
+        "trading_discipline_review": None,
+    }
+
+
+VALID_DRUCK = {
+    "macro_regime": "宽松进攻", "key_signal": "利率主导",
+    "evidence": "10年国债涨 0.4%，30年国债涨 0.5%，黄金跌 1.2%，美元跌 0.3%",
+    "next_session_expect": "继续宽松交易",
+    "what_kills_this_view": "明日 10Y 跳升 8bp",
+    "free_analysis": "宽松交易延续，长端债券走强配合美元弱势，黄金被资金获利了结。",
+}
+
+
+def test_druck_full_panel_4dims_pass():
+    panel = {"cross_asset_state": {
+        "treasury_10y": "up", "treasury_30y": "up", "dollar": "down",
+        "gold": "down", "oil": None, "vix": None, "btc": None, "eth": None,
+    }}  # available=4, need=2
+    ok, errors = validate_narrative(_us_base_narrative(druck=VALID_DRUCK), "US", panel)
+    assert ok, errors
+
+
+def test_druck_full_8dims_need_4():
+    panel = {"cross_asset_state": {d: "up" for d in
+             ["treasury_10y", "treasury_30y", "dollar", "gold",
+              "oil", "vix", "btc", "eth"]}}  # available=8, need=4
+    # VALID_DRUCK 提到 4 个 → 通过
+    ok, errors = validate_narrative(_us_base_narrative(druck=VALID_DRUCK), "US", panel)
+    assert ok, errors
+
+
+def test_druck_insufficient_dim_mentions():
+    panel = {"cross_asset_state": {d: "up" for d in
+             ["treasury_10y", "treasury_30y", "dollar", "gold",
+              "oil", "vix", "btc", "eth"]}}  # need=4
+    bad = {**VALID_DRUCK, "evidence": "10年国债涨 0.4%（仅 1 维）"}
+    ok, errors = validate_narrative(_us_base_narrative(druck=bad), "US", panel)
+    assert not ok
+    assert any("evidence" in e and "跨资产" in e for e in errors)
+
+
+def test_druck_severely_missing_requires_declaration():
+    panel = {"cross_asset_state": {d: None for d in
+             ["treasury_10y", "treasury_30y", "dollar", "gold",
+              "oil", "vix", "btc", "eth"]}}  # available=0, need=0
+    # 不声明 → 失败
+    bad = {**VALID_DRUCK, "evidence": "市场震荡"}
+    ok, errors = validate_narrative(_us_base_narrative(druck=bad), "US", panel)
+    assert not ok
+    # 声明 → 通过
+    ok2 = {**VALID_DRUCK, "evidence": "跨资产数据缺失，仅参考价格"}
+    ok2_pass, _ = validate_narrative(_us_base_narrative(druck=ok2), "US", panel)
+    assert ok2_pass
+
+
+def test_druck_bad_enum():
+    panel = {"cross_asset_state": {d: "up" for d in
+             ["treasury_10y", "treasury_30y", "dollar", "gold",
+              "oil", "vix", "btc", "eth"]}}
+    bad = {**VALID_DRUCK, "macro_regime": "牛市"}
+    ok, errors = validate_narrative(_us_base_narrative(druck=bad), "US", panel)
+    assert not ok
+    assert any("macro_regime" in e for e in errors)
+
+
+# ---------- minervini 降级 ----------
+
+VALID_MINERVINI = {
+    "breadth_state": "健康", "key_metric_focus": "200日均线广度",
+    "evidence": "above_ma150 上升至 24，新高数 5；spy_iwm 分化收窄至 0.5%",
+    "divergence_warning": "否",
+    "what_kills_this_view": "above_ma150 跌破 15 且 spy_iwm 扩大至 2%",
+    "free_analysis": "广度状态健康，大小盘分化收敛，趋势确认信号增强。",
+}
+
+
+def test_minervini_full_three_fields():
+    panel = {"above_ma150_count": 24, "spy_iwm_divergence": 0.005,
+             "new_high_count_20d": 5}
+    ok, errors = validate_narrative(_us_base_narrative(minervini=VALID_MINERVINI),
+                                     "US", panel)
+    assert ok, errors
+
+
+def test_minervini_partial_panel_with_declaration():
+    """spy_iwm_divergence 缺失 → 可用=2，需引 2；声明可降级。"""
+    panel = {"above_ma150_count": 24, "spy_iwm_divergence": None,
+             "new_high_count_20d": 5}
+    # 引 1 个 + 声明数据缺失 → 通过
+    n = {**VALID_MINERVINI, "evidence": "above_ma150 上升至 24；spy_iwm 数据暂缺"}
+    ok, errors = validate_narrative(_us_base_narrative(minervini=n), "US", panel)
+    assert ok, errors
+
+
+def test_minervini_insufficient_mentions_no_declaration():
+    panel = {"above_ma150_count": 24, "spy_iwm_divergence": 0.005,
+             "new_high_count_20d": 5}
+    # 引 1 个，不声明 → 失败
+    n = {**VALID_MINERVINI, "evidence": "above_ma150 24，仅 1 项"}
+    ok, errors = validate_narrative(_us_base_narrative(minervini=n), "US", panel)
+    assert not ok
+
+
+# ---------- wyckoff / weinstein 基本 enum 校验 ----------
+
+# ---------- free_analysis / ticker_analyses ----------
+
+def test_free_analysis_too_long():
+    bad = {**VALID_YANGJIA, "free_analysis": "x" * 250}
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": bad,
+         "zhaolaoge_liquidity_focus": None, "fengliu_contrarian_check": None,
+         "trading_discipline_review": None}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("free_analysis" in e and "超过" in e for e in errors)
+
+
+def test_ticker_analyses_valid():
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None,
+         "ticker_analyses": {"SH510050": "上证50ETF 今日缩量整理，价格分位居中，资金谨慎观望中长期方向。"}}
+    ok, errors = validate_narrative(n, "A")
+    assert ok, errors
+
+
+def test_ticker_analyses_too_short():
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None,
+         "ticker_analyses": {"SH510050": "太短"}}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("太短" in e for e in errors)
+
+
+def test_ticker_analyses_too_long():
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None,
+         "ticker_analyses": {"SH510050": "x" * 200}}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("太长" in e for e in errors)
+
+
+def test_merge_ticker_analyses_to_session():
+    from src.llm_validate import merge_into_session
+    session = {"tickers": [
+        {"code": "SH510050", "analysis": ""},
+        {"code": "SZ159995", "analysis": ""},
+    ]}
+    narrative = {
+        "is_skeleton": False, "session_summary": "x",
+        "ticker_analyses": {"SH510050": "测试分析内容" * 8},
+    }
+    merge_into_session(session, narrative)
+    assert "测试分析内容" in session["tickers"][0]["analysis"]
+    assert session["tickers"][1]["analysis"] == ""  # 未提供的不动
+
+
+def test_weinstein_bad_enum():
+    field = {
+        "anchor_tickers": ["AAPL"],
+        "weinstein_stage": "牛市初期",  # 不在白名单
+        "ma_relation": "站上30周均线",
+        "evidence": "x", "entry_opportunity": "x", "what_kills_this_view": "x",
+    }
+    n = _us_base_narrative()
+    n["weinstein_stage_check"] = field
+    ok, errors = validate_narrative(n, "US", {})
+    assert not ok
+    assert any("weinstein_stage" in e for e in errors)

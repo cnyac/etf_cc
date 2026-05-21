@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>{{ today_date }} A股全景数据审查报告</title>
+<style>
+  body {
+    font-family: 'Times New Roman', '仿宋_GB2312', sans-serif;
+    font-size: 1.0em;
+    line-height: 1.6;
+    max-width: 1400px;
+    margin: 24px auto;
+    padding: 0 16px;
+    color: #222;
+  }
+  h1 {
+    font-family: 'Times New Roman', '华文中宋', serif;
+    font-weight: bold;
+    font-size: 2em;
+    text-align: center;
+    margin-top: 24px;
+  }
+  h2 {
+    font-family: 'Times New Roman', '黑体', sans-serif;
+    font-size: 1.5em;
+    margin-top: 32px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 4px;
+  }
+  h3 {
+    font-family: 'Times New Roman', '楷体_GB2312', serif;
+    font-weight: bold;
+    font-size: 1.3em;
+    margin-top: 24px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 0.95em;
+  }
+  th, td {
+    border: 1px solid #999;
+    padding: 6px 8px;
+    text-align: center;
+    vertical-align: middle;
+  }
+  th { background: #f0f0f0; font-weight: bold; }
+  td.analysis { text-align: left; line-height: 1.5; min-width: 280px; }
+  .up    { color: #FF0000; font-weight: bold; }
+  .down  { color: #00008B; font-weight: bold; }
+  .stats { margin: 8px 0; font-style: italic; color: #555; }
+  .warn-up {
+    background-color: #ffe6e6; color: #FF0000;
+    font-size: 1.8em;
+    font-family: 'Times New Roman', '黑体', sans-serif;
+    font-weight: bold; text-align: center;
+    padding: 20px; border: 6px solid #FF0000;
+    margin: 24px 0; letter-spacing: 2px;
+    box-shadow: 0 4px 15px rgba(255,0,0,0.4);
+  }
+  .warn-down {
+    background-color: #e6f0fa; color: #00008B;
+    font-size: 1.8em;
+    font-family: 'Times New Roman', '黑体', sans-serif;
+    font-weight: bold; text-align: center;
+    padding: 20px; border: 6px solid #00008B;
+    margin: 24px 0; letter-spacing: 2px;
+    box-shadow: 0 4px 15px rgba(0,0,139,0.4);
+  }
+  .audit {
+    background: #f8f9fa; border-left: 6px solid #333;
+    padding: 16px; margin: 32px 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+  }
+  strong.anomaly { color: #FF0000; }
+</style>
+</head>
+<body>
+
+{% if resonance == "up" %}
+<div class="warn-up">🚨 全局极值预警：超70%品种共振起爆！做多情绪极度宣泄，请立刻注意逼空动能！ 🚨</div>
+{% elif resonance == "down" %}
+<div class="warn-down">⚠️ 全局极值预警：超70%品种共振杀跌！流动性正在急剧收缩，防守退潮信号确立！ ⚠️</div>
+{% endif %}
+
+<h1>{{ today_date_full }} A股全景极速数据审查报告</h1>
+
+{% set cat_order = ["持续强化", "强反转", "反包修复", "连续杀跌"] %}
+{% set cat_labels = {"持续强化": "一、持续强化类", "强反转": "二、强反转类",
+                    "反包修复": "三、反包修复类", "连续杀跌": "四、连续杀跌类"} %}
+
+{% for cat in cat_order %}
+{% set group = groups[cat] %}
+<h2>{{ cat_labels[cat] }}（{{ group|length }}个，占{{ stats[cat].pct }}%）</h2>
+
+<table>
+<thead>
+<tr>
+  <th>名称</th><th>日期</th><th>今涨幅</th><th>昨涨幅</th>
+  <th>涨跌幅差值</th><th>今日成交额</th><th>成交额环比</th>
+  <th>归类特征</th><th>归类</th><th>符合情况</th><th>原因分析</th>
+</tr>
+</thead>
+<tbody>
+{% for it in group %}
+<tr>
+  <td>{{ it.name }}</td>
+  <td>{{ session_date_label }}</td>
+  <td class="{{ 'up' if it.today_pct > 0 else ('down' if it.today_pct < 0 else '') }}">{{ '%+.2f%%'|format(it.today_pct * 100) }}</td>
+  <td class="{{ 'up' if it.yest_pct > 0 else ('down' if it.yest_pct < 0 else '') }}">{{ '%+.2f%%'|format(it.yest_pct * 100) }}</td>
+  <td class="{{ 'up' if it.pct_diff > 0 else ('down' if it.pct_diff < 0 else '') }}">{{ '%+.2f%%'|format(it.pct_diff * 100) }}</td>
+  <td>{{ it.today_amount_str }}</td>
+  <td class="{{ 'up' if it.volume_ratio > 0 else 'down' }}">{{ '%+.2f%%'|format(it.volume_ratio * 100) }}</td>
+  <td>{{ it.feature }}</td>
+  <td>{{ it.category }}</td>
+  <td>{{ it.compliance }}</td>
+  <td class="analysis">{{ it.analysis | safe }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+<div class="stats">本分类共 {{ group|length }} 个品种，占总数 {{ stats[cat].pct }}%。</div>
+{% endfor %}
+
+<div class="audit">
+  <strong>审计日志（Audit Log）</strong><br>
+  ▸ 总品种数 N = {{ total }}<br>
+  ▸ 分类合计 = {{ stats["持续强化"].count }} + {{ stats["强反转"].count }} + {{ stats["反包修复"].count }} + {{ stats["连续杀跌"].count }} = {{ stats["持续强化"].count + stats["强反转"].count + stats["反包修复"].count + stats["连续杀跌"].count }}{% if stats["持续强化"].count + stats["强反转"].count + stats["反包修复"].count + stats["连续杀跌"].count == total %} ✓ 闭环{% else %} ❌ 不一致{% endif %}<br>
+  ▸ 上涨 {{ up_count }} / 下跌 {{ down_count }} / 总数 {{ total }}（上涨占比 {{ '%.1f%%'|format(up_count / total * 100) }}）<br>
+  ▸ 极值共振判定：{% if resonance == "up" %}已触发上涨共振预警{% elif resonance == "down" %}已触发下跌共振预警{% else %}未触发（涨跌均不足70%）{% endif %}<br>
+  ▸ 本报告所有数字字段由 Python 脚本确定性计算，定性分析由 Claude Opus 生成。
+</div>
+
+</body>
+</html>

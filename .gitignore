@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Claude 工作树 / 本地配置
+.claude/
+
+# 运行时产物（每次跑都会重生成）
+data/window/pool_a.json
+data/window/pool_us.json
+data/window/last_synced.json
+data/snapshots/
+data/reports/
+data/analyses/
+data/raw/
+data/merged/
+data/full_narrative.json
+data/*.tmp
+
+# 旧 docx 产物（重构期间归档）
+reports/
+*.docx
+*.docx.tmp
+
+# 临时
+*.tmp
+*.log
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

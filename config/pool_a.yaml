@@ -1,0 +1,71 @@
+# A 股 ETF + 跨资产代表 监控池
+#
+# 字段：
+#   code:      交易所前缀 + 代码（SH510050 / SZ159995）
+#   name:      中文显示名
+#   category:  分类（用于报告分组；与 classify.py 的四象限归类无关）
+#   role:      可选；跨资产代表标注（treasury_10y / treasury_30y / gold / oil）
+#              用于 cross_asset_state 派生。普通板块 ETF 不填。
+#
+# 编辑约定：
+#   - 改动这个文件后，运行 `python a/etf_update.py` 自动补齐切片
+#   - 不要重复造代码格式（必须 SH/SZ 大写前缀 + 6 位数字）
+#   - 顺序无关，category 内部顺序由 Python 排序
+
+etfs:
+  # === 跨资产代表（先列，方便 cross_asset 引用）===
+  - { code: SH511260, name: 十年国债ETF,        category: 利率债, role: treasury_10y }
+  - { code: SH511090, name: 30年国债ETF,        category: 利率债, role: treasury_30y }
+  - { code: SH518880, name: 黄金ETF,            category: 贵金属, role: gold }
+  - { code: SH501018, name: 南方原油LOF,        category: 原油,   role: oil }
+
+  # === 宽基指数 ===
+  - { code: SH510050, name: 上证50ETF,          category: 宽基 }
+  - { code: SH510210, name: 上证指数ETF,        category: 宽基 }
+  - { code: SZ159845, name: 中证1000ETF,        category: 宽基 }
+  - { code: SZ159949, name: 创业板50ETF,        category: 宽基 }
+  - { code: SZ159920, name: 恒生ETF,            category: 海外宽基 }
+  - { code: SH513300, name: 纳斯达克ETF,        category: 海外宽基 }
+
+  # === 利率债（已在跨资产列出，这里只列地方债）===
+  - { code: SH511270, name: 10年地方债ETF,      category: 利率债 }
+
+  # === 科技 / 进攻 ===
+  - { code: SZ159995, name: 芯片ETF,            category: 科技 }
+  - { code: SZ159732, name: 消费电子ETF,        category: 科技 }
+  - { code: SH512720, name: 计算机ETF,          category: 科技 }
+  - { code: SH515880, name: 通信ETF,            category: 科技 }
+  - { code: SZ159869, name: 游戏ETF,            category: 科技 }
+  - { code: SH562500, name: 机器人ETF,          category: 高端制造 }
+
+  # === 新能源 / 周期 ===
+  - { code: SH516160, name: 新能源ETF,          category: 新能源 }
+  - { code: SH516390, name: 新能源汽车ETF,      category: 新能源 }
+  - { code: SH515790, name: 光伏ETF,            category: 新能源 }
+  - { code: SH516110, name: 汽车ETF,            category: 汽车 }
+  - { code: SH516780, name: 稀土ETF,            category: 周期资源 }
+  - { code: SH515220, name: 煤炭ETF,            category: 周期资源 }
+  - { code: SH515210, name: 钢铁ETF,            category: 周期资源 }
+  - { code: SZ159870, name: 化工ETF,            category: 周期资源 }
+  - { code: SZ159981, name: 能源化工ETF,        category: 周期资源 }
+
+  # === 金融 ===
+  - { code: SH512800, name: 银行ETF,            category: 金融 }
+  - { code: SH512070, name: 证券保险ETF易方达,  category: 金融 }
+  - { code: SZ159841, name: 证券ETF,            category: 金融 }
+
+  # === 医药 ===
+  - { code: SZ159929, name: 医药ETF,            category: 医药 }
+  - { code: SZ159883, name: 医疗器械ETF,        category: 医药 }
+  - { code: SZ159647, name: 中药ETF,            category: 医药 }
+
+  # === 消费 ===
+  - { code: SH510150, name: 消费ETF,            category: 消费 }
+  - { code: SH512690, name: 酒ETF,              category: 消费 }
+  - { code: SZ159825, name: 农业ETF,            category: 消费 }
+  - { code: SZ159766, name: 旅游ETF,            category: 消费 }
+
+  # === 基建 / 地产 / 军工 ===
+  - { code: SH516950, name: 基建ETF,            category: 基建地产 }
+  - { code: SH512200, name: 房地产ETF,          category: 基建地产 }
+  - { code: SH512680, name: 军工ETF广发,        category: 军工 }
