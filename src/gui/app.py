@@ -4,7 +4,7 @@
 访问：  http://127.0.0.1:5010
 
 设计：
-  - 路由按 §4.5.3 约定（HANDOFF_FRONTEND.md）
+  - 路由约定见 REFACTOR_BRIEF.md §7.10 / §7.11
   - 长任务（update_all / sync）走 gui.tasks 后台线程 + /api/task/<id> 轮询
   - 同步小任务（gen_prompt / fill_narrative / render_html / pool 编辑）直接返回
   - 静态资源：static/{fonts,lib}/，报告：/reports/<m>/<file>
