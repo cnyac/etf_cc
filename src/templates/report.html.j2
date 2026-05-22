@@ -11,6 +11,7 @@
 {# ===================== Jinja macros ===================== #}
 {% set _PERSONA_SPECIAL = ('what_kills_this_view', 'free_analysis',
                            'panorama_text', 'cross_validation_text',
+                           'cross_asset_panorama',
                            'key_movers', 'prev_session_audit') %}
 
 {% macro persona_card(field_name, title, data) %}
@@ -20,7 +21,7 @@
       <div>—（候选 0 或字段缺失）</div>
     {% else %}
       {% for k, v in data.items() if k not in _PERSONA_SPECIAL %}
-        <div class="kv"><span class="key">{{ k }}:</span>
+        <div class="kv"><span class="key">{{ field_label_cn.get(k, k) }}：</span>
           {% if v is mapping or (v is iterable and v is not string) %}
             {{ v | tojson }}
           {% else %}{{ v }}{% endif %}
@@ -39,6 +40,12 @@
         <div class="persona-section">
           <div class="persona-section-h">交叉验证</div>
           <div class="persona-section-body">{{ data.cross_validation_text }}</div>
+        </div>
+      {% endif %}
+      {% if data.cross_asset_panorama %}
+        <div class="persona-section">
+          <div class="persona-section-h">跨资产全景</div>
+          <div class="persona-section-body">{{ data.cross_asset_panorama }}</div>
         </div>
       {% endif %}
       {% if data.key_movers %}
@@ -94,7 +101,7 @@
       <th style="width:50px">均线</th>
       <th>标签 / LLM 点评</th>
       <th style="width:90px">预期审计</th>
-      <th style="width:240px">批注（点击行编辑）</th>
+      <th style="width:240px">批注（点击此列编辑）</th>
     </tr>
   </thead>
   <tbody>
@@ -478,11 +485,16 @@ td.center { text-align: center; }
 .ma-dot-na { background: transparent; }
 
 .cross-asset {
-  display: inline-flex;
-  gap: 12px;
-  padding: 4px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding: 6px 0;
 }
-.cross-asset .item { font-size: 0.7em; }
+.cross-asset .item {
+  /* 与 §2 时段叙事正文一致（继承 body 1.5em） */
+  font-size: 1em;
+}
+.cross-asset .item .dim-label { color: #444; margin-right: 4px; }
 
 .panel-grid {
   display: grid;
@@ -571,8 +583,8 @@ td.center { text-align: center; }
   border-radius: 3px;
 }
 
-.tr-clickable { cursor: pointer; }
-.tr-clickable:hover { background: #fffbeb; }
+.annotation-cell { cursor: pointer; }
+.annotation-cell:hover { background: #fffbeb; outline: 2px solid #f5d28a; outline-offset: -2px; }
 
 #ann-modal {
   display: none;
@@ -700,8 +712,8 @@ td.center { text-align: center; }
   {% set n = cd.get(cat, 0) %}
   {% set pct = (n / total * 100) | round(1) %}
   <div class="item">
-    {{ cat }}: <b>{{ n }}</b>
-    <span class="muted">({{ pct }}%{% if dom and cat == dom[0] %} · 主导{% endif %})</span>
+    <span class="dim-label">{{ cat }}：</span><b>{{ n }}</b>
+    <span class="muted">（{{ pct }}%{% if dom and cat == dom[0] %} · 主导{% endif %}）</span>
   </div>
 {% endfor %}
 </div>
@@ -710,14 +722,15 @@ td.center { text-align: center; }
 <div class="cross-asset">
 {% for dim, val in p.cross_asset_state.items() %}
   <div class="item">
-    {{ dim }}:
-    {% if val == "up" %}<span class="up">↑</span>
-    {% elif val == "down" %}<span class="down">↓</span>
-    {% elif val == "flat" %}<span class="flat">—</span>
-    {% else %}<span class="muted">N/A</span>{% endif %}
+    <span class="dim-label">{{ cross_asset_label_cn.get(dim, dim) }}：</span>
+    {% if val == "up" %}<span class="up">↑ 上涨</span>
+    {% elif val == "down" %}<span class="down">↓ 下跌</span>
+    {% elif val == "flat" %}<span class="flat">— 持平</span>
+    {% else %}<span class="muted">暂无数据</span>{% endif %}
   </div>
 {% endfor %}
 </div>
+{# §3 内容层 cross_asset_panorama 待 #3 完整实施时由 LLM 输出，本次仅显示层中文化 #}
 
 {# ============ §2 双引擎人格 ============ #}
 <h2>§2 时段叙事</h2>
@@ -997,9 +1010,9 @@ $('ann-clear').addEventListener('click', () => {
   closeModal();
 });
 
-// 行点击
-document.querySelectorAll('tr.tr-clickable').forEach(tr => {
-  tr.addEventListener('click', () => openModal(tr.dataset.code));
+// 批注单元格点击（只在"批注"列响应，不污染其它单元格的选区操作）
+document.querySelectorAll('td.annotation-cell').forEach(cell => {
+  cell.addEventListener('click', () => openModal(cell.dataset.annoCellFor));
 });
 
 // ---------- 保存 ----------

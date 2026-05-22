@@ -31,6 +31,110 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 REPORTS_DIR = os.path.join(ROOT, "data", "reports")
 MARKET_LABEL = {"A": "A 股", "US": "美股"}
 
+# 字段名英→中翻译（模板里 {{ field_label_cn.get(k, k) }} 查表，未命中显示原英文）
+FIELD_LABEL_CN = {
+    # 通用
+    "evidence": "依据",
+    "next_session_expect": "下一时段预期",
+    "what_kills_this_view": "证伪条件",
+    "free_analysis": "自由分析",
+    "panorama_text": "全景图",
+    "cross_validation_text": "交叉验证",
+    "key_movers": "关键异动板块",
+    "prev_session_audit": "前一时段审计",
+    "actual_vs_expected": "实际 vs 预期",
+    "audit_note": "审计备注",
+    "auditor": "审计人",
+    # yangjia (A)
+    "stage": "情绪阶段",
+    "intensity": "强度",
+    # zhaolaoge / fengliu / wyckoff / weinstein  key_movers 子项
+    "sector": "板块",
+    "phenomenon": "量价异动",
+    "motive": "机构意图",
+    "scenario": "推演",
+    # druckenmiller (US)
+    "macro_regime": "宏观格局",
+    "key_signal": "关键信号",
+    # minervini (US)
+    "breadth_state": "广度状态",
+    "key_metric_focus": "关键指标聚焦",
+    "divergence_warning": "背离警示",
+    # wyckoff
+    "wyckoff_phase": "Wyckoff 阶段",
+    "vol_price_quality": "量价质量",
+    "anchor_tickers": "锚定品种",
+    "follow_strategy": "跟随策略",
+    # weinstein
+    "weinstein_stage": "Weinstein 阶段",
+    "ma_relation": "MA 关系",
+    "entry_opportunity": "建仓机会",
+    # discipline
+    "code": "代码",
+    "logic_hardness": "逻辑硬度",
+    "risk_reward_ratio": "盈亏比",
+    "discipline_pass": "纪律通过",
+    "review_note": "复盘备注",
+    "rating_override": "评级覆盖",
+    "keep_rating": "保留评级",
+    "reason": "理由",
+    # strategy_outlook
+    "market_phase": "市场阶段",
+    "trend_forecast": "趋势预判",
+    "style_tone": "风格定调",
+    "attack_direction": "主攻方向",
+    "retreat_direction": "出逃方向",
+    "key_focus": "核心关注",
+    "risk_points": "风险点",
+    # macro_cycle_anchor
+    "asset_profile": "资产图谱",
+    "historical_anchor": "历史锚点",
+    "then_vs_now": "古今对比",
+    "forward_strategy": "前瞻策略",
+    "year": "年份",
+    "event": "事件",
+    "phase": "阶段",
+    "brief": "简述",
+    "similarity": "相似点",
+    "divergence": "差异点",
+    "risks": "风险",
+    "opportunities": "机会",
+}
+
+# panel / cross_asset / breadth 字段中文（用于 §0 §1 显示）
+CROSS_ASSET_LABEL_CN = {
+    "treasury_10y": "10 年期国债",
+    "treasury_30y": "30 年期国债",
+    "dollar":       "美元指数",
+    "gold":         "黄金",
+    "oil":          "原油",
+    "vix":          "VIX 恐慌指数",
+    "btc":          "比特币",
+    "eth":          "以太坊",
+}
+
+CROSS_ASSET_DIR_CN = {
+    "up":   "上涨",
+    "down": "下跌",
+    "flat": "持平",
+    None:   "—",
+}
+
+PANEL_FIELD_LABEL_CN = {
+    "above_ma150_count":    "站上 30 周均线品种数",
+    "spy_iwm_divergence":   "大小盘分化 (SPY-IWM)",
+    "new_high_count_20d":   "20 日新高数",
+    "new_low_count_20d":    "20 日新低数",
+    "up_count":             "上涨家数",
+    "down_count":           "下跌家数",
+    "flat_count":           "持平家数",
+    "strong_up_count":      "强势上涨家数 (>+2%)",
+    "strong_down_count":    "强势下跌家数 (<-2%)",
+    "vol_expansion_count":  "放量品种数",
+    "vol_contraction_count": "缩量品种数",
+    "breadth_alert":        "极值共振预警",
+}
+
 
 def _pct_fmt(v):
     if v is None:
@@ -53,6 +157,10 @@ def _make_env() -> Environment:
     )
     env.globals["pct_fmt"] = _pct_fmt
     env.globals["pct_class"] = _pct_class
+    env.globals["field_label_cn"] = FIELD_LABEL_CN
+    env.globals["cross_asset_label_cn"] = CROSS_ASSET_LABEL_CN
+    env.globals["cross_asset_dir_cn"] = CROSS_ASSET_DIR_CN
+    env.globals["panel_field_label_cn"] = PANEL_FIELD_LABEL_CN
     return env
 
 

@@ -152,6 +152,7 @@ US_SCHEMA = {
             "key_signal": ENUM_KEY_SIGNAL,
         },
         "required": ["macro_regime", "key_signal", "evidence",
+                     "cross_asset_panorama",   # 任务 #3：跨资产全景段
                      "next_session_expect", "what_kills_this_view",
                      "free_analysis"],
         "evidence_min_dims": 4,
@@ -267,6 +268,7 @@ TICKER_ANALYSIS_MIN = 30
 TICKER_ANALYSIS_MAX = 120
 PANORAMA_LEN = (150, 400)
 CROSS_VALIDATION_LEN = (100, 300)
+CROSS_ASSET_PANORAMA_LEN = (150, 500)  # 美股 druckenmiller 跨资产全景段
 AUDIT_NOTE_MAX = 80
 KEY_MOVERS_MIN = 2  # 赵老哥 / 冯柳 各 ≥2 条
 KEY_MOVER_REQUIRED = ["sector", "phenomenon", "motive", "scenario"]

@@ -201,6 +201,12 @@ def _us_base_narrative(druck=None, minervini=None):
 VALID_DRUCK = {
     "macro_regime": "宽松进攻", "key_signal": "利率主导",
     "evidence": "10年国债涨 0.4%，30年国债涨 0.5%，黄金跌 1.2%，美元跌 0.3%",
+    "cross_asset_panorama": (
+        "宽松交易延续：长短端国债共振走强（10Y +0.4% / 30Y +0.5%），"
+        "美元指数走弱 0.3% 释放风险偏好，黄金 -1.2% 被资金获利兑现转向权益。"
+        "原油 +0.8% 配合 PMI 边际改善暗示制造业修复，"
+        "BTC 横盘小幅 +0.2% 风险资产分化但未现避险。综合显示资金对宽松进攻情景定价确信度上升。"
+    ),
     "next_session_expect": "继续宽松交易",
     "what_kills_this_view": "明日 10Y 跳升 8bp",
     "free_analysis": "宽松交易延续，长端债券走强配合美元弱势，黄金被资金获利了结。",

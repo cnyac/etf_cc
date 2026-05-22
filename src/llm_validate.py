@@ -18,7 +18,7 @@ from src.llm_schema import (
     get_schema, TOP_LEVEL_REQUIRED,
     A_CROSS_ASSET_DIMS, US_CROSS_ASSET_DIMS, MINERVINI_BREADTH_FIELDS,
     FREE_ANALYSIS_MAX, TICKER_ANALYSIS_MIN, TICKER_ANALYSIS_MAX,
-    PANORAMA_LEN, CROSS_VALIDATION_LEN, AUDIT_NOTE_MAX,
+    PANORAMA_LEN, CROSS_VALIDATION_LEN, CROSS_ASSET_PANORAMA_LEN, AUDIT_NOTE_MAX,
     KEY_MOVERS_MIN, KEY_MOVER_REQUIRED,
     ENUM_AUDIT_RATING, ENUM_AUDITOR,
     ENUM_MARKET_PHASE, ENUM_TREND_FORECAST, ENUM_STYLE_TONE,
@@ -179,6 +179,10 @@ def _validate_druckenmiller(field: dict, panel: dict, errors: list) -> None:
                 field.get("macro_regime"), spec["enums"]["macro_regime"], errors)
     _check_enum("druckenmiller_macro_check.key_signal",
                 field.get("key_signal"), spec["enums"]["key_signal"], errors)
+    # cross_asset_panorama 长度（任务 #3）
+    _check_length_range(field.get("cross_asset_panorama"),
+                        CROSS_ASSET_PANORAMA_LEN,
+                        "druckenmiller_macro_check.cross_asset_panorama", errors)
 
     available = _available_cross_asset_dims(panel, "US")
     need = _druckenmiller_required_dim_count(available)

@@ -33,10 +33,31 @@
 3. ticker_audits[code].auditor 只能填：
      yangjia / zhaolaoge / fengliu / discipline （**不可填 quant**，量化代审是 Python 的活）
 
+   美股 druckenmiller_macro_check 新增必填字段 **cross_asset_panorama**：
+     150-500 字，写一段跨资产全景解读（10Y/30Y/美元/黄金/原油/VIX/BTC/ETH 八维联动）。
+     侧重资金流向、风险偏好、宏观周期定位；避免单维度孤立点评。中文行文。
+
 4. enum 字段（如 stage / intensity / market_phase 等）必须严格使用 schema 给出的白名单值，
    不可创新词或用同义词替换。仅 actual_vs_expected 接受简写归一化（如上）。
 
-5. evidence 引用规则（**最容易失败**，仔细看）：
+5. 写作可读性规则（用户最看重的细节）：
+
+   a) **品种代码必须括号带中文名**：所有提到 ticker 的地方（ticker_analyses 的文本、
+      session_summary、free_analysis、key_movers、anchor_tickers 等），写完代码后
+      必须紧跟一个括号注中文名。当前时段品种矩阵的 `n` 字段就是中文名，直接抄。
+      ✓ 正例：「PLTR（Palantir）放量突破...」「SH510050（上证50ETF）缩量整理...」
+      ✗ 反例：「PLTR 放量突破...」「SH510050 缩量整理...」
+
+   b) **panel/指标字段优先用中文**：在 free_analysis / panorama_text /
+      cross_asset_panorama / cross_validation_text / session_summary 等"叙述性"段落里，
+      引用 panel 字段或因子时**优先用中文标签**（更易读），而不是直接打英文 key。
+      ✓ 正例：「站上 30 周均线的有 24/45 只，大小盘分化扩大至 -1.5%...」
+      ✗ 反例：「above_ma150_count=24/45，spy_iwm_divergence=-1.5%...」
+
+   c) **evidence 字段例外**：evidence 字段需通过字面校验（见第 6 条规则的 alias 列表），
+      可以中英文都给（如「站上 30 周均线 above_ma150_count=24/45」），既满足校验又可读。
+
+6. evidence 引用规则（**最容易失败**，仔细看）：
    druckenmiller_macro_check / minervini_breadth_check / A 股各分类层人格的 evidence
    字段，要求"引用至少 N 个跨资产维度 / 广度字段"。**校验是字面子串匹配**——你必须
    在 evidence 里**字面出现 schema 下方列出的关键词之一**，才会被计数。
