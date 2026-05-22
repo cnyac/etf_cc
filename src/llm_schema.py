@@ -272,5 +272,5 @@ CROSS_VALIDATION_LEN = (100, 300)
 CROSS_ASSET_PANORAMA_LEN = (150, 500)  # 美股 druckenmiller 跨资产全景段
 AUDIT_NOTE_MAX = 80
 KEY_MOVERS_MIN = 3  # 赵老哥 / 冯柳 / wyckoff / weinstein 各 ≥3 条（#9 2026-05-22）
-DEEP_ANALYSIS_LEN = (400, 1200)  # strategy_outlook.deep_analysis 长篇综合论证
+DEEP_ANALYSIS_LEN = (400, None)  # strategy_outlook.deep_analysis：下限 400 字，无上限
 KEY_MOVER_REQUIRED = ["sector", "phenomenon", "motive", "scenario"]

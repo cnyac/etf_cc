@@ -103,11 +103,9 @@ def run(markets: list[Literal["A", "US"]],
         "elapsed_sec": 0.0,
     }
 
-    if not skip_refresh:
-        results = data_refresh.refresh_all(markets, log_cb=log_cb)
-        summary["data_refresh"] = {
-            m: {"ok": ok, "note": note} for m, (ok, note) in results.items()
-        }
+    # 新流程（2026-05-22 用户反馈）：先 detect_report_gaps，无缺口 → 跳过 refresh
+    # 旧流程错误地"无脑 refresh 全部市场再判断缺口"，浪费时间还可能拉空。
+    summary["data_refresh"] = {}
 
     for market in markets:
         end_date, a_until = report_gap.default_end(market)
@@ -115,6 +113,18 @@ def run(markets: list[Literal["A", "US"]],
                       - datetime.timedelta(days=lookback_days)).isoformat()
         gaps = report_gap.detect_report_gaps(market, start_date, end_date, a_until)
         log_cb(f"\n[{market}] 报告缺口 {len(gaps)} 个（{start_date} ~ {end_date}）")
+
+        if not gaps:
+            log_cb(f"[{market}] 无缺口，跳过数据补齐和 build")
+            continue
+
+        # 有缺口才补齐切片
+        if not skip_refresh:
+            ok, note = data_refresh.refresh_pool(market)
+            summary["data_refresh"][market] = {"ok": ok, "note": note}
+            log_cb(f"[{market}] 池子数据补齐 {'OK' if ok else 'FAIL'}: {note}")
+        else:
+            summary["data_refresh"][market] = {"ok": True, "note": "--skip-refresh"}
 
         # 批量预拉 OHLCV cache：多个 close-session 缺口共享一次大区间拉取。
         # noon 时段需腾讯实时快照，不共享；但 cache 提供 ma150 等历史窗口仍可用。

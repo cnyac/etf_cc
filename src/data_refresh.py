@@ -78,53 +78,46 @@ def refresh_pool(market: Literal["A", "US"],
 
 
 def _refresh_us_batch(codes: list[str]) -> tuple[bool, str]:
-    """走 auto-prtsc/us.update.us_daily_update 批量入口。
+    """走 auto-prtsc 的 _download_via_akshare + _merge_to_slices 底层函数。
 
-    us_daily_update 要求 JSON 格式 pool（{stocks: [{code}, ...]}），与我们 yaml 结构
-    (etfs: [...]) 不同。这里写临时 JSON 作适配。
+    2026-05-22 用户反馈：yfinance 一直被 YFRateLimitError 限流（0 命中），
+    每只走兜底浪费时间。**永久绕开 yfinance**，直接 akshare。
 
-    返回 (ok, note)。us_daily_update 无返回值（失败走 logger），所以我们通过 mtime
-    比对推断结果：拉取后 slices/<code>.parquet 较 1 分钟前更新过 → 算成功。
+    不调 us_daily_update（它的源分发链默认 yfinance + akshare fallback），
+    改为直接调底层批量拉 akshare → 合并到 slices/。
+
+    auto-prtsc 默认行为不变（其他项目仍可用 yfinance）。
     """
-    import json
     import sys
-    import tempfile
     import time
 
     if r"D:\git\auto prtsc" not in sys.path:
         sys.path.insert(0, r"D:\git\auto prtsc")
-    from us.update import us_daily_update  # noqa: E402
+    from us.update import _download_via_akshare, _merge_to_slices  # noqa: E402
     import config as _cfg  # noqa: E402
 
+    clean_codes = [c.replace(".", "-") for c in codes]
     slices_dir = os.path.join(_cfg.QUANT_DATA, "us", "slices")
     started = time.time()
 
-    tmp_pool = {"name": "etf_cc_us_pool", "stocks": [{"code": c} for c in codes]}
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False,
-                                     encoding="utf-8") as f:
-        json.dump(tmp_pool, f, ensure_ascii=False)
-        tmp_path = f.name
-    try:
-        us_daily_update(pool_path=tmp_path)
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+    data = _download_via_akshare(clean_codes)
+    if data is None or (hasattr(data, "empty") and data.empty):
+        return False, f"美股池(akshare 批量): 拉空，0/{len(codes)}"
+
+    _merge_to_slices(data, codes, clean_codes)
 
     # 数 slices 文件中 mtime > started 的（即本次跑新写入的）
     refreshed = 0
     if os.path.isdir(slices_dir):
         for c in codes:
-            # 切片文件名用 ticker 原文（含点 / 连字符）；尝试两种
             for name in (c, c.replace(".", "-")):
                 fp = os.path.join(slices_dir, f"{name}.parquet")
                 if os.path.exists(fp) and os.path.getmtime(fp) >= started - 1:
                     refreshed += 1
                     break
     elapsed = time.time() - started
-    ok = refreshed >= len(codes) * 0.8  # ≥80% 算成功（少量品种本来就可能停牌/退市）
-    note = (f"美股池(批量): refreshed={refreshed}/{len(codes)} 耗时 {elapsed:.1f}s")
+    ok = refreshed >= len(codes) * 0.8
+    note = (f"美股池(akshare 批量): refreshed={refreshed}/{len(codes)} 耗时 {elapsed:.1f}s")
     return ok, note
 
 

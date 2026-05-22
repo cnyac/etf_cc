@@ -83,14 +83,18 @@ def _check_required(field_data: dict, required_keys: Iterable[str],
         errors.append(f"{field_label}.free_analysis 超过 {FREE_ANALYSIS_MAX} 字（当前 {len(fa)} 字）")
 
 
-def _check_length_range(text: str | None, lo_hi: tuple[int, int],
+def _check_length_range(text: str | None, lo_hi: tuple,
                         label: str, errors: list) -> None:
+    """lo_hi = (下限, 上限)；上限 None 表示无上限。"""
     if not text:
         return  # 空由 _check_required 报；此处只查长度
     n = len(text)
     lo, hi = lo_hi
-    if n < lo or n > hi:
-        errors.append(f"{label} 长度 {n} 不在 [{lo}, {hi}] 区间")
+    if n < lo:
+        errors.append(f"{label} 长度 {n} 短于下限 {lo}")
+        return
+    if hi is not None and n > hi:
+        errors.append(f"{label} 长度 {n} 超上限 {hi}")
 
 
 def _validate_prev_audit(field: dict, label: str, errors: list) -> None:

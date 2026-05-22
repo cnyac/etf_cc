@@ -53,6 +53,43 @@ def _trade_date_from_label(label: str) -> str:
     return label
 
 
+def _load_prev_snapshot(market: str, target_trade_date: str,
+                        target_session_time: str) -> dict | None:
+    """从 data/snapshots/<m>/ 找 target 之前最近的同 session_time 归档。
+    用于 audit 的"前一时段"对照，避免依赖窗口（窗口会被 backfill 弹掉新数据）。
+    """
+    import json as _json
+    snap_dir = os.path.join(win.SNAPSHOT_DIR, market.lower())
+    if not os.path.isdir(snap_dir):
+        return None
+    best_date = None
+    best_fp = None
+    for fn in os.listdir(snap_dir):
+        if not fn.endswith(".json"):
+            continue
+        label_str = fn[:-5]
+        if label_str.endswith("-午"):
+            st = "noon"; td = label_str[:-2].rstrip("-")
+        elif label_str.endswith("-收"):
+            st = "close"; td = label_str[:-2].rstrip("-")
+        else:
+            st = "close"; td = label_str
+        if td >= target_trade_date:
+            continue
+        if st != target_session_time:
+            continue
+        if best_date is None or td > best_date:
+            best_date = td
+            best_fp = os.path.join(snap_dir, fn)
+    if best_fp is None:
+        return None
+    try:
+        with open(best_fp, "r", encoding="utf-8") as f:
+            return _json.load(f)
+    except Exception:
+        return None
+
+
 def _adapter_for_enrich(per_ticker: list[dict], market: str, name_map: dict) -> dict:
     """构造 classify.enrich 期望的 snapshot 结构。
     enrich 的旧契约：snapshot["items"] = [{name, today_pct, yest_pct, today_amount, yest_amount, ...}]
@@ -207,10 +244,10 @@ def build(market: Literal["A", "US"], label: str,
 
     panel = build_panel(per_ticker, pool, market)
 
-    # 量化代审兜底（任务 2.2）：用窗口里"前一时段"对每只 ticker 打 D1+D2 分。
-    # 必须在 append 当前 session 前查；fill_narrative 时 LLM 可覆盖部分 ticker。
-    prev_data = win.load(market)
-    prev_session = prev_data["sessions"][-1] if prev_data.get("sessions") else None
+    # 量化代审兜底（任务 2.2）：用"前一时段"对每只 ticker 打 D1+D2 分。
+    # 2026-05-22 修复 #3：从 snapshots/ 找 trade_date 之前最近的同 session_time
+    # 归档，不再依赖窗口（窗口可能被 backfill 弹掉新数据）。
+    prev_session = _load_prev_snapshot(market, trade_date, session_time)
     audits = audit_mod.quant_audit_batch(prev_session, {"tickers": per_ticker})
     for t in per_ticker:
         a = audits.get(t["code"])
