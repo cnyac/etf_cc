@@ -148,6 +148,36 @@ def _pct_class(v):
     return "up" if v > 0 else "down"
 
 
+def _panel_to_cn(text):
+    """把 LLM 文本里的 panel 英文字段名替换成中文（如 above_ma150_count → 站上
+    30 周均线品种数）。配合 prompt 规则双保险：即使 LLM 偶尔写英文也能正确展示。
+    匹配按 key 长度倒序，避免 above_ma150_count 被 above_ma150 部分匹配吃掉。
+    """
+    if not isinstance(text, str) or not text:
+        return text
+    # 长 key 先替换避免子串冲突
+    for k in sorted(PANEL_FIELD_LABEL_CN.keys(), key=len, reverse=True):
+        if k in text:
+            text = text.replace(k, PANEL_FIELD_LABEL_CN[k])
+    # 跨资产英文 dim → 中文（如 treasury_10y → 10 年期国债）
+    for k in sorted(CROSS_ASSET_LABEL_CN.keys(), key=len, reverse=True):
+        if k in text:
+            text = text.replace(k, CROSS_ASSET_LABEL_CN[k])
+    return text
+
+
+def _humanize_value(v):
+    """list[str] → 顿号 join；list[dict]/dict → JSON 但中文不转义；str/num 原样。"""
+    import json as _json
+    if isinstance(v, list):
+        if v and all(isinstance(x, str) for x in v):
+            return "、".join(v)
+        return _json.dumps(v, ensure_ascii=False)
+    if isinstance(v, dict):
+        return _json.dumps(v, ensure_ascii=False)
+    return v
+
+
 def _make_env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
@@ -155,12 +185,17 @@ def _make_env() -> Environment:
         trim_blocks=False,
         lstrip_blocks=False,
     )
+    # Jinja 默认 tojson 走 json.dumps(ensure_ascii=True) → 中文被转义成 \uXXXX。
+    # 改成不转义，列表/字典展示直接显示中文（如 anchor_tickers）。
+    env.policies["json.dumps_kwargs"] = {"ensure_ascii": False, "sort_keys": False}
     env.globals["pct_fmt"] = _pct_fmt
     env.globals["pct_class"] = _pct_class
     env.globals["field_label_cn"] = FIELD_LABEL_CN
     env.globals["cross_asset_label_cn"] = CROSS_ASSET_LABEL_CN
     env.globals["cross_asset_dir_cn"] = CROSS_ASSET_DIR_CN
     env.globals["panel_field_label_cn"] = PANEL_FIELD_LABEL_CN
+    env.filters["panel_to_cn"] = _panel_to_cn
+    env.filters["humanize"] = _humanize_value
     return env
 
 

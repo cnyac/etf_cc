@@ -22,30 +22,29 @@
     {% else %}
       {% for k, v in data.items() if k not in _PERSONA_SPECIAL %}
         <div class="kv"><span class="key">{{ field_label_cn.get(k, k) }}：</span>
-          {% if v is mapping or (v is iterable and v is not string) %}
-            {{ v | tojson }}
-          {% else %}{{ v }}{% endif %}
+          {% set h = v | humanize %}
+          {% if h is string %}{{ h | panel_to_cn }}{% else %}{{ h }}{% endif %}
         </div>
       {% endfor %}
       {% if data.free_analysis %}
-        <div class="free-analysis">{{ data.free_analysis }}</div>
+        <div class="free-analysis">{{ data.free_analysis | panel_to_cn }}</div>
       {% endif %}
       {% if data.panorama_text %}
         <div class="persona-section">
           <div class="persona-section-h">全景图（≥3 段）</div>
-          <div class="persona-section-body">{{ data.panorama_text }}</div>
+          <div class="persona-section-body">{{ data.panorama_text | panel_to_cn }}</div>
         </div>
       {% endif %}
       {% if data.cross_validation_text %}
         <div class="persona-section">
           <div class="persona-section-h">交叉验证</div>
-          <div class="persona-section-body">{{ data.cross_validation_text }}</div>
+          <div class="persona-section-body">{{ data.cross_validation_text | panel_to_cn }}</div>
         </div>
       {% endif %}
       {% if data.cross_asset_panorama %}
         <div class="persona-section">
           <div class="persona-section-h">跨资产全景</div>
-          <div class="persona-section-body">{{ data.cross_asset_panorama }}</div>
+          <div class="persona-section-body">{{ data.cross_asset_panorama | panel_to_cn }}</div>
         </div>
       {% endif %}
       {% if data.key_movers %}
@@ -54,10 +53,10 @@
           <ul class="key-movers">
           {% for m in data.key_movers %}
             <li>
-              <span class="km-sector">{{ m.sector }}</span> ·
-              <span class="km-phen">{{ m.phenomenon }}</span><br>
-              <span class="km-motive">动因：{{ m.motive }}</span><br>
-              <span class="km-scenario">推演：{{ m.scenario }}</span>
+              <span class="km-sector">{{ m.sector | panel_to_cn }}</span> ·
+              <span class="km-phen">{{ m.phenomenon | panel_to_cn }}</span><br>
+              <span class="km-motive">动因：{{ m.motive | panel_to_cn }}</span><br>
+              <span class="km-scenario">推演：{{ m.scenario | panel_to_cn }}</span>
             </li>
           {% endfor %}
           </ul>
@@ -148,7 +147,7 @@
             {% endfor %}
             </div>
           {% endif %}
-          {% if r.analysis %}<div class="llm-analysis">{{ r.analysis }}</div>{% endif %}
+          {% if r.analysis %}<div class="llm-analysis">{{ r.analysis | panel_to_cn }}</div>{% endif %}
         </td>
         <td class="center audit-cell">
           {% if r.audit and r.audit.actual_vs_expected %}
@@ -762,9 +761,9 @@ td.center { text-align: center; }
 {% set n = session.narrative %}
 {% if n %}
   {% if n.is_skeleton %}
-    <p class="muted">[骨架 Python 生成] {{ n.session_summary }}</p>
+    <p class="muted">[骨架 Python 生成] {{ n.session_summary | panel_to_cn }}</p>
   {% else %}
-    <p>{{ n.session_summary }}</p>
+    <p>{{ n.session_summary | panel_to_cn }}</p>
   {% endif %}
 
   {% if not n.is_skeleton %}
@@ -796,7 +795,7 @@ td.center { text-align: center; }
 {# ============ §3.5 独特异象追踪（炒家专项；无独特品种时跳过）============ #}
 {% if n and not n.is_skeleton and n.unique_anomaly_analysis %}
 <h2>§3.5 独特异象追踪（炒家专项）</h2>
-<div class="anomaly-card">{{ n.unique_anomaly_analysis }}</div>
+<div class="anomaly-card">{{ n.unique_anomaly_analysis | panel_to_cn }}</div>
 {% endif %}
 
 {# ============ §4 跨日追踪表 ============ #}
@@ -838,7 +837,7 @@ td.center { text-align: center; }
 {% if so.deep_analysis %}
 <div class="deep-analysis-block">
   <h3>深度综合论证</h3>
-  <div class="deep-analysis-body">{{ so.deep_analysis | replace("\n", "<br>") | safe }}</div>
+  <div class="deep-analysis-body">{{ so.deep_analysis | panel_to_cn | replace("\n", "<br>") | safe }}</div>
 </div>
 {% endif %}
 {% endif %}
