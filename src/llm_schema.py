@@ -217,7 +217,7 @@ STRATEGY_OUTLOOK_SCHEMA = {
 }
 
 # unique_anomaly_analysis：任务 2.3 独特异象追踪（炒家写）
-UNIQUE_ANOMALY_LEN = (200, 500)   # 字数区间
+UNIQUE_ANOMALY_LEN = (200, None)   # 字数区间（下限 200，无上限，让 LLM 发挥）
 
 # macro_cycle_anchor：任务 4 周末宏观周期（仅周末必填）
 MACRO_CYCLE_SCHEMA = {
@@ -263,14 +263,17 @@ TOP_LEVEL_REQUIRED = ["is_skeleton", "session_summary"]
 TOP_LEVEL_OPTIONAL = ["strategy_outlook", "unique_anomaly_analysis",
                       "macro_cycle_anchor", "ticker_analyses", "ticker_audits"]
 
-# 长度约束
-FREE_ANALYSIS_MAX = 200
+# 长度约束（2026-05-22 用户全场放开上限：LLM 字段只保留下限确保不偷工，
+# 上限统一 None 让 LLM 按需写够。AUDIT_NOTE_MAX / FREE_ANALYSIS_MAX 保留常量供
+# 旧代码 import 不破坏，但实际不再用于校验）。
+FREE_ANALYSIS_MAX = None             # 自由分析：无上限
 TICKER_ANALYSIS_MIN = 30
-TICKER_ANALYSIS_MAX = 120
-PANORAMA_LEN = (150, 400)
-CROSS_VALIDATION_LEN = (100, 300)
-CROSS_ASSET_PANORAMA_LEN = (150, 500)  # 美股 druckenmiller 跨资产全景段
-AUDIT_NOTE_MAX = 80
-KEY_MOVERS_MIN = 3  # 赵老哥 / 冯柳 / wyckoff / weinstein 各 ≥3 条（#9 2026-05-22）
-DEEP_ANALYSIS_LEN = (400, None)  # strategy_outlook.deep_analysis：下限 400 字，无上限
+TICKER_ANALYSIS_MAX = None           # ticker 点评：下限 30，无上限
+PANORAMA_LEN = (150, None)           # 全景图：下限 150，无上限
+CROSS_VALIDATION_LEN = (100, None)   # 交叉验证：下限 100，无上限
+CROSS_ASSET_PANORAMA_LEN = (150, None)  # 美股 druckenmiller 跨资产全景段
+AUDIT_NOTE_MAX = None                # 审计备注：无上限
+KEY_MOVERS_MIN = 3                   # key_movers ≥3 条
+DEEP_ANALYSIS_LEN = (400, None)      # strategy_outlook.deep_analysis：下限 400 字
+RATING_OVERRIDE_REASON_MAX = None    # rating_override.reason：无上限
 KEY_MOVER_REQUIRED = ["sector", "phenomenon", "motive", "scenario"]

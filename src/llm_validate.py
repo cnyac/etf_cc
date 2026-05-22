@@ -77,10 +77,12 @@ def _check_required(field_data: dict, required_keys: Iterable[str],
         v = field_data[k]
         if v in (None, "") or (isinstance(v, list) and not v):
             errors.append(f"{field_label}.{k} 必填但空")
-    # free_analysis 长度上限
-    fa = field_data.get("free_analysis")
-    if fa and isinstance(fa, str) and len(fa) > FREE_ANALYSIS_MAX:
-        errors.append(f"{field_label}.free_analysis 超过 {FREE_ANALYSIS_MAX} 字（当前 {len(fa)} 字）")
+    # free_analysis 长度上限（2026-05-22 放开，无上限）
+    # 保留此 hook 供未来如需重新限制时使用
+    if FREE_ANALYSIS_MAX is not None:
+        fa = field_data.get("free_analysis")
+        if fa and isinstance(fa, str) and len(fa) > FREE_ANALYSIS_MAX:
+            errors.append(f"{field_label}.free_analysis 超过 {FREE_ANALYSIS_MAX} 字（当前 {len(fa)} 字）")
 
 
 def _check_length_range(text: str | None, lo_hi: tuple,
@@ -114,9 +116,10 @@ def _validate_prev_audit(field: dict, label: str, errors: list) -> None:
                       f"（同义词亦可：强超/强超预期/超/超预期/符合/低/不及预期/强低/远低于预期）")
     else:
         pa["actual_vs_expected"] = normalized  # 归一化写回
-    note = pa.get("audit_note", "")
-    if note and len(note) > AUDIT_NOTE_MAX:
-        errors.append(f"{label}.prev_session_audit.audit_note 超 {AUDIT_NOTE_MAX} 字")
+    if AUDIT_NOTE_MAX is not None:
+        note = pa.get("audit_note", "")
+        if note and len(note) > AUDIT_NOTE_MAX:
+            errors.append(f"{label}.prev_session_audit.audit_note 超 {AUDIT_NOTE_MAX} 字")
 
 
 def _validate_key_movers(field: dict, label: str, errors: list) -> None:
@@ -271,8 +274,6 @@ def _validate_discipline(reviews, market: str, errors: list) -> None:
             ro = r["rating_override"]
             if not isinstance(ro, dict) or "keep_rating" not in ro or "reason" not in ro:
                 errors.append(f"{label}.rating_override 需含 keep_rating 和 reason")
-            elif len(ro.get("reason", "")) > 30:
-                errors.append(f"{label}.rating_override.reason 超 30 字")
 
 
 def _validate_strategy_outlook(so, errors: list) -> None:
@@ -362,7 +363,7 @@ def _validate_ticker_analyses(ta, errors: list) -> None:
         n = len(text)
         if n < TICKER_ANALYSIS_MIN:
             errors.append(f"ticker_analyses[{code}] 太短（{n} 字 < {TICKER_ANALYSIS_MIN}）")
-        elif n > TICKER_ANALYSIS_MAX:
+        elif TICKER_ANALYSIS_MAX is not None and n > TICKER_ANALYSIS_MAX:
             errors.append(f"ticker_analyses[{code}] 太长（{n} 字 > {TICKER_ANALYSIS_MAX}）")
 
 

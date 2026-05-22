@@ -157,20 +157,20 @@ def test_discipline_rating_override_valid():
     assert ok, errors
 
 
-def test_discipline_rating_override_reason_too_long():
+def test_discipline_rating_override_reason_no_upper_limit():
+    """2026-05-22 用户拍板：所有 LLM 字段去上限，rating_override.reason 也是。"""
     review = {
         "code": "SH510050",
         "logic_hardness": "硬", "risk_reward_ratio": "优",
         "discipline_pass": False,
-        "rating_override": {"keep_rating": True, "reason": "x" * 40},
+        "rating_override": {"keep_rating": True, "reason": "x" * 200},
         "review_note": "x",
     }
     n = {"is_skeleton": False, "session_summary": "x",
          "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
          "fengliu_contrarian_check": None, "trading_discipline_review": [review]}
     ok, errors = validate_narrative(n, "A")
-    assert not ok
-    assert any("30 字" in e for e in errors)
+    assert ok, f"超长 reason 不应再被拒：{errors}"
 
 
 def test_discipline_missing_code():
@@ -307,15 +307,15 @@ def test_minervini_insufficient_mentions_no_declaration():
 
 # ---------- free_analysis / ticker_analyses ----------
 
-def test_free_analysis_too_long():
-    bad = {**VALID_YANGJIA, "free_analysis": "x" * 250}
+def test_free_analysis_no_upper_limit():
+    """2026-05-22 用户拍板：free_analysis 去上限，让 LLM 发挥。"""
+    long_one = {**VALID_YANGJIA, "free_analysis": "x" * 2000}
     n = {"is_skeleton": False, "session_summary": "x",
-         "yangjia_emotion_cycle": bad,
+         "yangjia_emotion_cycle": long_one,
          "zhaolaoge_liquidity_focus": None, "fengliu_contrarian_check": None,
          "trading_discipline_review": None}
     ok, errors = validate_narrative(n, "A")
-    assert not ok
-    assert any("free_analysis" in e and "超过" in e for e in errors)
+    assert ok, f"超长 free_analysis 不应再被拒：{errors}"
 
 
 def test_ticker_analyses_valid():
@@ -337,14 +337,14 @@ def test_ticker_analyses_too_short():
     assert any("太短" in e for e in errors)
 
 
-def test_ticker_analyses_too_long():
+def test_ticker_analyses_no_upper_limit():
+    """2026-05-22 用户拍板：ticker_analyses 去上限，仅保留 ≥30 字下限。"""
     n = {"is_skeleton": False, "session_summary": "x",
          "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
          "fengliu_contrarian_check": None, "trading_discipline_review": None,
-         "ticker_analyses": {"SH510050": "x" * 200}}
+         "ticker_analyses": {"SH510050": "x" * 500}}
     ok, errors = validate_narrative(n, "A")
-    assert not ok
-    assert any("太长" in e for e in errors)
+    assert ok, f"超长 ticker_analyses 不应再被拒：{errors}"
 
 
 def test_merge_ticker_analyses_to_session():

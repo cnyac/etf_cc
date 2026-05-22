@@ -5,15 +5,15 @@
   "is_skeleton": false,
   "session_summary": "<~100字：风格判断 + 主线锚定 + 预期推演 + 风险提示；若昨判被打脸则先写纠错>",
   "ticker_analyses": {
-    "<code>": "<50-100字：该品种值得关注的原因、量价信号、应对思路>",
+    "<code>": "<≥30字 无上限：该品种值得关注的原因、量价信号、应对思路>",
     ...每个分类挑 1-2 个重点品种
   },
   "strategy_outlook": {...},
-  "unique_anomaly_analysis": "<200-500字 或 null>",
+  "unique_anomaly_analysis": "<≥200字 无上限 或 null>",
   "macro_cycle_anchor": {...} 或 null,
   "ticker_audits": {...},
   "trading_discipline_review": [{code, logic_hardness, risk_reward_ratio, discipline_pass, review_note}, ...] 或 null,
-  ...各人格字段（含 free_analysis ≤200 字，含可选 prev_session_audit；见下方 schema）
+  ...各人格字段（含 free_analysis 自由段 无字数上限，含可选 prev_session_audit；见下方 schema）
 }
 
 === 易错字段强提醒（违反必返工） ===
@@ -34,7 +34,7 @@
      yangjia / zhaolaoge / fengliu / discipline （**不可填 quant**，量化代审是 Python 的活）
 
    美股 druckenmiller_macro_check 新增必填字段 **cross_asset_panorama**：
-     150-500 字，写一段跨资产全景解读（10Y/30Y/美元/黄金/原油/VIX/BTC/ETH 八维联动）。
+     ≥150 字 无上限，写一段跨资产全景解读（10Y/30Y/美元/黄金/原油/VIX/BTC/ETH 八维联动）。
      侧重资金流向、风险偏好、宏观周期定位；避免单维度孤立点评。中文行文。
 
    strategy_outlook 新增必填字段 **deep_analysis** （≥400 字 长篇综合论证，无上限，按需写够）：
