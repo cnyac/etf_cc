@@ -41,7 +41,7 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 
 # 项目当前状态（重要）
 
-**2026-05-20 完成需求面封口；2026-05-21 阶段 1-6 + A + B 全部实现完成 + 旧 docx 已归档**。
+**2026-05-22 阶段 1-8 全部上线 + 多轮实测反馈修复完成**。
 
 | 阶段 | 工作 | 状态 |
 |---|---|---|
@@ -51,11 +51,27 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 | 4 | 双引擎 schema + 校验 + prompt 构造 + fill_narrative CLI | ✅ |
 | 5 | HTML 渲染 + 色板 + 批注交互 JS | ✅ |
 | 6 | 数据更新汇总（update_all / data_refresh / report_gap / log_util） | ✅ |
-| A | §0 极值共振预警 + §3 每品种 3 行滚动渲染（不动 LLM） | ✅ |
+| A | §0 极值共振预警 + §3 每品种 3 行滚动渲染 | ✅ |
 | B | 人格扩职 + audit.py 量化代审 + 周末 macro_cycle_anchor | ✅ |
-| 7 | 端到端真实 LLM 联调 | ⏸ |
+| 7 | 端到端真实 LLM 联调（A 股 + 美股都已跑通真实 narrative） | ✅ |
+| 8 | Flask GUI 控制台（8 tab 含三级风险调参）+ 多轮反馈修复 | ✅ |
 
 旧 docx 流水线（11 个文件）已全量归档到 `src/_archived/`；`src/classify.py` 被新架构复用，保留在 `src/`。模块布局见 README §二。
+
+**2026-05-22 关键迭代（实测后修复）**：
+- 美股 refresh **永久绕开 yfinance** → 直接 akshare（yfinance 被 RateLimit 100% 限流）
+- update_all 顺序倒置：先 detect_report_gaps，无缺口跳过 refresh
+- build_snapshot 批量预拉 OHLCV cache（17 label 共享 1 次拉取，368s→~30s）
+- 渲染层从 snapshots/ 直读（独立于窗口）：修 §3 表格日期错乱
+- §4 audit 模板写死 → 改读 audit；audit.py 加 audit_note 中文简述
+- 新增 `src/recompute_audit.py` CLI：对已有 snapshot 重算 audit 不动 narrative
+- enum 同义词归一化（强超/强超预期/强超于预期 → 强超于预期）
+- prompt alias 表大幅扩充 + schema_text 显式列举关键词 + evidence 写作 few-shot
+- §6 策略前瞻加 `deep_analysis`（≥400 字 无上限）+ 4 部分写作框架
+- **全场 LLM 字段去字数上限**（free_analysis/ticker_analyses/panorama 等），仅保留下限
+- 渲染层中文化：字段名/跨资产 dim/panel 字段名/方向 全 panel_to_cn 后处理
+- 批注交互改 cell-level（只点"批注"列才弹 modal）
+- HTML 字段名英→中翻译（`FIELD_LABEL_CN`）+ Jinja `ensure_ascii=False`
 
 - **本轮重构的所有决策详见** `REFACTOR_BRIEF.md`
 - **设计动机和不要做什么详见** `DESIGN.md`
@@ -136,7 +152,7 @@ A 股版：up/down/flat_count + strong_up/down_count + vol_expansion/contraction
 - `what_kills_this_view` 每字段必填（不可变性承诺锚点）
 - 候选数 = 0 时整字段填 `null`，在 session_summary 说明
 - `trading_discipline_review.discipline_pass=false` 默认降一档，`rating_override` 可破例
-- **每个人格字段含 `free_analysis` ≤200 字自由发挥段**（用户 2026-05-21 加）
+- **每个人格字段含 `free_analysis` 自由发挥段，无字数上限**（2026-05-22 用户拍板放开）
 - **narrative 顶层含 `ticker_analyses: {code: text}`**，每条 30-120 字；每个分类挑 **1-2 个**（不是 3-4 个）最值得关注的品种写点评；其他不写。fill_narrative 自动回填到 `ticker.analysis`，HTML §3 表的"标签 / LLM 点评"列渲染
 
 ## 滚动窗口操作
@@ -259,15 +275,16 @@ A 股版：up/down/flat_count + strong_up/down_count + vol_expansion/contraction
 | 数据更新行为矩阵 | `src/report_gap.py` 顶部 docstring |
 | auto-prtsc 项目结构 | `F:\obsidian\Vault\Projects\形态复盘引擎-数据基础设施.md` |
 
-# 模块分层（22 个 .py 按 6 层划分）
+# 模块分层（按 6 层划分）
 
 ```
-A. 数据流水线  update_all / data_refresh / report_gap / build_snapshot / backfill
-B. 计算核心    factors / classify / panel / audit
+A. 数据流水线  update_all / data_refresh / report_gap / build_snapshot / backfill / recompute_audit
+B. 计算核心    factors / classify / panel / audit / thresholds_cfg
 C. 状态管理    window / schema / sync_annotations
 D. LLM 协作    llm_schema / llm_prompt / llm_validate / gen_prompt / fill_narrative
-E. 渲染层      render_html / color_palette / templates/report.html.j2
+E. 渲染层      render_html / color_palette / templates/report.html.j2 / templates/prompt/*.j2.default
 F. 工具        log_util
+G. GUI         gui/{app.py, tasks.py, config_io.py, config_schema.py, templates/index.html, static/}
 ```
 
 工作时按层定位文件 → 找代码 → 改动；不跨层乱引用。
@@ -275,7 +292,11 @@ F. 工具        log_util
 # 常用命令
 
 ```bash
-# 一键数据更新（推荐：自动检测缺口 + 补齐）
+# === GUI（推荐入口，端口 5010）===
+python -m src.gui.app
+
+# === CLI ===
+# 一键数据更新（先 detect_report_gaps，无缺口跳过 refresh + build）
 python -m src.update_all                    # A + US 全跑
 python -m src.update_all --markets A        # 只 A 股
 python -m src.update_all --skip-refresh     # 跳过 auto-prtsc 底层补齐
@@ -298,6 +319,27 @@ python -m src.render_html --market A --label 2026-05-20-收
 # 同步 B 发回的批注
 python -m src.sync_annotations --market A
 
+# 对已有 snapshot 重算 audit（不动 narrative；audit.py 升级后用）
+python -m src.recompute_audit --market US --label 2026-05-21    # 单个
+python -m src.recompute_audit --market US --all                 # 全部
+
 # 跑所有测试
-python -m pytest tests/
+python -m pytest tests/                       # 当前 200 passed
 ```
+
+# 数据源策略（2026-05-22 锁定）
+
+- **A 股**：Tushare Pro / 腾讯财经 / akshare（auto-prtsc 维护，etf_cc 无须关心）
+- **美股**：`src/data_refresh.py` 直接调底层 `_download_via_akshare + _merge_to_slices`，
+  **永久绕开 yfinance**（用户网络下 yfinance 100% 被 YFRateLimitError 限流）。
+  auto-prtsc 默认仍是 yfinance（其他项目不受影响）。
+- 跳过源选择 / 配置环境变量：本项目无需，已写死 akshare 在 etf_cc 这一层。
+
+# LLM 字段长度策略（2026-05-22 拍板）
+
+**全场放开上限**：所有 LLM 自由文本字段（free_analysis / panorama_text / cross_validation_text /
+cross_asset_panorama / ticker_analyses / unique_anomaly_analysis / audit_note /
+rating_override.reason / deep_analysis 等）只保留下限确保不偷工，**上限统一 None**。
+
+未来若需要重新加上限：只改 `src/llm_schema.py` 顶部的 `_MAX` / `_LEN` 常量元组上限即可，
+校验代码已有 `None` 短路逻辑。

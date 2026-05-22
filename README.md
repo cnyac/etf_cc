@@ -1,8 +1,8 @@
 # etf_cc — A 股 + 美股量价分析自动化
 
-> **状态**：2026-05-21 阶段 1-6 + A + B 实现完成；旧 docx 流水线归档；剩阶段 7（端到端真实 LLM 联调）。
+> **状态**：2026-05-22 阶段 1-8 全部上线 + 多轮实测反馈修复完成。
 >
-> Git: https://github.com/cnyac/etf_cc · main · 170/170 测试通过
+> Git: https://github.com/cnyac/etf_cc · main · 200/200 测试通过
 
 > 🆕 **新会话冷启动**：按 §一"AI 阅读版"的顺序读 4 个文档（README → CLAUDE → DESIGN → REFACTOR_BRIEF），然后 `git log --oneline -5` 看最近做了什么 + `python -m pytest tests/` 验证环境。5 分钟上手。
 
@@ -33,21 +33,29 @@ A 股看 42 只 ETF 池，美股看 45 只权重股/ETF 池。每日产出独立
 5. **数据来源是 `auto-prtsc`**（位于 `D:\git\auto prtsc`），通过 Python module import 集成，不开本地 REST。
 6. **批注闭环靠 HTML 内嵌 JSON**：B 在浏览器点击批注，写入 `<script id="annotations">`，A 侧用 BeautifulSoup 解析。
 
-## 当前代码状态（2026-05-21）
+## 当前代码状态（2026-05-22）
 
 | 阶段 | 模块 | 状态 |
 |---|---|---|
 | 1a/1b/1c | auto-prtsc 侧 ETF 管道 + `etf_data_api.py` 统一入口 | ✅ |
 | 2 | `src/factors.py` / `src/panel.py`（含 breadth_alert） | ✅ |
 | 3 | `src/window.py` / `src/build_snapshot.py` / `src/sync_annotations.py` / `src/backfill.py` | ✅ |
-| 4 | `src/llm_schema.py` / `src/llm_validate.py` / `src/llm_prompt.py` / `src/gen_prompt.py` / `src/fill_narrative.py` | ✅ |
+| 4 | `src/llm_schema.py` / `src/llm_validate.py` / `src/llm_prompt.py` + 模板 `src/templates/prompt/*.j2[.default]` | ✅ |
 | 5 | `src/render_html.py` / `src/templates/report.html.j2` / `src/color_palette.py` + 批注 JS | ✅ |
 | 6 | 数据更新汇总：`update_all` / `data_refresh` / `report_gap` / `log_util` | ✅ |
-| A | 极值预警 + §3 三行滚动渲染（不动 LLM） | ✅ |
+| A | 极值预警 + §3 三行滚动渲染 | ✅ |
 | B | 人格扩职 + 预期审计（`audit.py` + schema 扩字段 + §3.5/§6/§7） | ✅ |
-| 7 | 端到端联调（待真实 LLM narrative） | ⏸ |
+| 7 | 端到端联调（A 股 + 美股都跑过真实 LLM narrative） | ✅ |
+| 8 | Flask GUI 控制台（`src/gui/` 8 tab 含三级风险调参）+ 多轮实测修复 | ✅ |
 
-**测试覆盖**：170/170 passed（tests/ 16 个文件）
+**测试覆盖**：200/200 passed（tests/ 17 个文件）
+
+**新增字段** (2026-05-22)：
+- `druckenmiller_macro_check.cross_asset_panorama` (≥150 字 无上限 跨资产全景)
+- `strategy_outlook.deep_analysis` (≥400 字 无上限 综合论证)
+- `audit.audit_note` (D1+D2 中文简述，渲染到 §3/§4 表格"评级理由"列)
+
+**LLM 字段长度策略**：全场放开上限，仅保留下限。详见 CLAUDE.md "LLM 字段长度策略"。
 
 **旧 docx 流水线**已全量归档到 `src/_archived/`；`src/classify.py` 被新架构复用保留在 `src/`。模块布局见 §"开发者阅读版" 下的目录树。
 
@@ -85,23 +93,27 @@ etf_cc/
 ├── requirements.txt
 │
 ├── config/
-│   ├── pool_a.yaml         # A 股池清单（用户可编辑）
-│   └── pool_us.yaml        # 美股池清单（用户可编辑）
+│   ├── pool_a.yaml         # A 股池清单（用户可编辑 / GUI 池配置 tab）
+│   ├── pool_us.yaml        # 美股池清单（45 只 = 用户给 44 + IEF）
+│   ├── personas.yaml       # 双引擎人格设定（GUI 系统调参 绿区）
+│   └── thresholds.yaml     # 量化阈值（GUI 系统调参 黄区，缺则用 _MAX 默认）
 │
-├── src/                    # 22 个新代码文件，按下方 6 层划分
+├── src/                    # 按下方 7 层划分
 │   │
 │   │   ── A. 数据流水线 ─────────────────────────
-│   ├── update_all.py       # 一键入口：补底层切片 + 检测报告缺口 + 跑缺的 label
-│   ├── data_refresh.py     # 调 auto-prtsc 池粒度 API（只更新 90 只池子）
+│   ├── update_all.py       # 一键入口：先 detect_report_gaps → 无缺口跳过 refresh
+│   ├── data_refresh.py     # 美股直调 auto-prtsc _download_via_akshare（弃 yfinance）
 │   ├── report_gap.py       # 报告层缺口检测 + 行为矩阵（A/US × 时刻）
-│   ├── build_snapshot.py   # 单时段生产（含 noon 实时 + quant audit 注入）
+│   ├── build_snapshot.py   # 单时段生产 + OHLCV cache 预拉 + prev 从 snapshots/ 找
 │   ├── backfill.py         # 历史回填 + 骨架 narrative (is_skeleton=true)
+│   ├── recompute_audit.py  # 对已有 snapshot 重算 audit 不动 narrative
 │   │
 │   │   ── B. 计算核心 ───────────────────────────
-│   ├── factors.py          # 7 因子 + close_vs_ma 三球 + 单一入口 compute_factors
+│   ├── factors.py          # 7 因子 + close_vs_ma 三球（阈值读 thresholds_cfg）
 │   ├── classify.py         # 四象限归类 + 位置标签（分类内）+ 全局最增/最缩量
-│   ├── panel.py            # panel_breadth 聚合 + breadth_alert（±70% 共振）
-│   ├── audit.py            # per-ticker 量化代审（D1 归类跃迁 + D2 量能配合）
+│   ├── panel.py            # panel_breadth 聚合 + breadth_alert（阈值读 thresholds_cfg）
+│   ├── audit.py            # per-ticker 量化代审（D1 + D2 + audit_note 中文简述）
+│   ├── thresholds_cfg.py   # 量化阈值运行时读取（薄层，避反向依赖 gui）
 │   │
 │   │   ── C. 状态管理 ───────────────────────────
 │   ├── schema.py           # session/window 数据契约
@@ -109,21 +121,33 @@ etf_cc/
 │   ├── sync_annotations.py # 从 HTML 解析 <script id="annotations"> 回写窗口
 │   │
 │   │   ── D. LLM 协作 ───────────────────────────
-│   ├── llm_schema.py       # 双引擎 schema + enum 白名单 + 长度约束 + 人格扩职
-│   ├── llm_prompt.py       # prompt 构造（短键压缩 + 审计上下文 + 周末标志）
-│   ├── llm_validate.py     # 校验 + 校验降级 + merge_into_session 覆盖 audit
+│   ├── llm_schema.py       # 双引擎 schema + enum 白名单 + audit_rating 同义词归一化
+│   ├── llm_prompt.py       # prompt 构造（personas.yaml 实时读 + Jinja 段模板）
+│   ├── llm_validate.py     # 校验 + 校验降级 + audit_rating 归一化写回
 │   ├── gen_prompt.py       # CLI：生成 prompt → stdout
 │   ├── fill_narrative.py   # CLI：校验 LLM JSON + 回填 session
 │   │
 │   │   ── E. 渲染层 ─────────────────────────────
-│   ├── render_html.py      # Jinja2 渲染 + 三行滚动 + sparkline 真数据注入
+│   ├── render_html.py      # Jinja2 渲染 + 字段中文翻译 + panel_to_cn 后处理
 │   ├── color_palette.py    # 色板闭环（12 浅色默认 + merge）
 │   ├── templates/
 │   │   ├── report.html.j2  # 单文件自包含主模板（CSS/JS 全内联）
+│   │   ├── prompt/         # LLM 提示段 Jinja 模板（GUI 系统调参 橙区可改）
+│   │   │   ├── task_block.j2[.default]
+│   │   │   └── weekend_flag.j2[.default]
 │   │   └── _archived/      # 旧版 html.j2 模板
 │   │
 │   │   ── F. 工具 ───────────────────────────────
 │   ├── log_util.py         # 数据更新汇总 + 错误明细 JSON
+│   │
+│   │   ── G. GUI ────────────────────────────────
+│   ├── gui/
+│   │   ├── app.py          # Flask 单 app + 27 路由（端口 5010）
+│   │   ├── tasks.py        # 后台任务管理 + logging hook 捕获 auto-prtsc 日志
+│   │   ├── config_io.py    # personas / thresholds / prompt_template 读写
+│   │   ├── config_schema.py # role enum 白名单 + 可调阈值清单
+│   │   ├── templates/index.html # 单页 8 tab Tailwind UI
+│   │   └── static/{fonts,lib}/  # 抄 auto-prtsc 字体 + echarts
 │   │
 │   └── _archived/          # 旧 docx 流水线（13 个文件，仅作历史参考，不被 import）
 │
@@ -139,7 +163,7 @@ etf_cc/
 │   └── _archived/
 │       └── prompts/        # 旧 docx 时代提示词（参考用）
 │
-└── tests/                  # 16 个 test_ 文件，170 个 case
+└── tests/                  # 17 个 test_ 文件，200 个 case
 ```
 
 ### 模块依赖关系（高→低）
@@ -160,8 +184,8 @@ sync_annotations → window
 - **auto-prtsc**（`D:\git\auto prtsc`）：数据基础设施。本项目通过 `from auto_prtsc.etf_data_api import ...` 调用，**不要重新造轮子**。
 - **Tushare token**：复用 auto-prtsc 的 `config.py` 中 `TUSHARE_TOKEN`，不另开
 - **腾讯财经**：无需认证
-- **akshare**：仅兜底
-- **yfinance**（auto-prtsc 已集成）：美股主源
+- **akshare**：A 股兜底 + **美股唯一源**（2026-05-22 切换，见下）
+- **yfinance**（auto-prtsc 已集成）：原美股主源，**etf_cc 已弃用**
 - **xfinlink**（auto-prtsc 已集成）：美股备源，付费
 
 ## 数据源优先级
@@ -170,10 +194,16 @@ sync_annotations → window
 |---|---|---|---|
 | A 股 ETF 历史日线 | Tushare Pro | 腾讯财经 | akshare |
 | A 股 ETF 实时快照 | 腾讯财经 | Tushare（盘后） | akshare |
-| 美股历史日线 | yfinance | xfinlink | — |
-| 美股实时快照 | yfinance | xfinlink | — |
+| **美股历史日线** | **akshare (Sina)** | — | — |
+| 美股实时快照 | （日内不需要：仅次日 5:30 后跑收盘） | — | — |
 
 失败转移：主 → 备 → 兜底逐级 fallback。全部失败则 abort 当前时段 + 错误日志归档。
+
+**美股源切换（2026-05-22）**：`src/data_refresh.py` 直接调 auto-prtsc 的
+`_download_via_akshare + _merge_to_slices`，绕过 `us_daily_update` 的源分发链。
+原因：用户网络下 yfinance 100% 被 `YFRateLimitError: Too Many Requests` 限流，
+每只都走 yfinance 失败 → akshare 兜底，等于双倍 round-trip 浪费时间。
+切换后单次批量 ~30-40s。auto-prtsc 默认仍是 yfinance，不影响其他项目。
 
 ## 开发约定
 
@@ -192,9 +222,14 @@ sync_annotations → window
 ## 命令速查
 
 ```bash
-# 一键数据更新（推荐：补底层切片 + 跑报告缺口）
+# === 推荐入口：GUI 控制台（端口 5010）===
+python -m src.gui.app                       # 浏览器开 http://127.0.0.1:5010
+
+# === CLI ===
+# 一键数据更新（先 detect_report_gaps，无缺口则跳过 refresh + build）
 python -m src.update_all                    # A + US 全跑，lookback 7 天
 python -m src.update_all --markets A        # 只 A 股
+python -m src.update_all --lookback 22      # 回看 22 天
 python -m src.update_all --skip-refresh     # 跳过底层补齐
 
 # 单时段生产（手动指定 label）
@@ -215,7 +250,11 @@ python -m src.render_html --market A --label 2026-05-20-收
 # 同步 B 发回的批注
 python -m src.sync_annotations --market A
 
-# 跑所有测试
+# 对已有 snapshot 重算 audit（audit.py 升级后用，不动 narrative）
+python -m src.recompute_audit --market US --label 2026-05-21    # 单个
+python -m src.recompute_audit --market US --all                 # 全部
+
+# 跑所有测试（当前 200 passed）
 python -m pytest tests/
 ```
 

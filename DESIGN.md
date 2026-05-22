@@ -102,11 +102,15 @@ A 股引擎（4 字段）：
 
 **为什么 A 股 4 字段 vs 美股 5 字段**：A 股有同花顺三指数 / panel_breadth 直接做广度，不需要专门的 Minervini 字段；美股没有同花顺等价物，必须有独立的"市场广度+失真预警"字段。
 
-**字段长度演化（2026-05-21 用户加）**：
+**字段长度演化**：
 
-每个人格字段在 enum + evidence(≤50 字) + what_kills_this_view 之外再加一个 `free_analysis` ≤200 字自由发挥段。理由：结构化字段太机械，难以承载"AI 综合体"的判断深度；free_analysis 给 LLM 空间做风格展开。
+- **2026-05-21 加 free_analysis**（≤200 字自由发挥段）：结构化字段太机械，难以承载"AI 综合体"的判断深度。
+- **2026-05-22 全场放开字数上限**（用户拍板）：实测发现 LLM 在长篇深度分析时被字数上限制约，关键洞察被截断。改成"只保留下限确保不偷工，上限统一 None"。
+  - 影响字段：`free_analysis` / `ticker_analyses` / `panorama_text` / `cross_validation_text` / `cross_asset_panorama` / `unique_anomaly_analysis` / `audit_note` / `rating_override.reason` / `deep_analysis`
+  - 设计哲学："按内容密度而非凑字数"。LLM 想说多少说多少；evidence 字段仍建议精简（要走 alias 字面校验）
+  - 未来需要重新限制：只改 `src/llm_schema.py` 顶部常量元组上限即可（校验代码已有 None 短路）
 
-此外 narrative 顶层加 `ticker_analyses: {code: text}`（每条 30-120 字）：LLM 从每分类挑 **1-2 个**（不是 3-4 个）最值得关注的品种写点评。`fill_narrative` 自动把 `ticker_analyses[code]` 回填到对应 `session.tickers[i].analysis`，HTML §3 表的"标签 / LLM 点评"列渲染。
+此外 narrative 顶层加 `ticker_analyses: {code: text}`（每条 ≥30 字 无上限）：LLM 从每分类挑 **1-2 个**（不是 3-4 个）最值得关注的品种写点评。`fill_narrative` 自动把 `ticker_analyses[code]` 回填到对应 `session.tickers[i].analysis`，HTML §3 表的"标签 / LLM 点评"列渲染。
 
 **阶段 B 人格扩职（2026-05-21）**：
 
