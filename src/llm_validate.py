@@ -27,27 +27,35 @@ from src.llm_schema import (
     normalize_audit_rating,
 )
 
-# 维度名 → 中文别名（LLM 写 evidence 时可能用中文）
+# 维度名 → 关键词别名（LLM evidence 必须字面出现以下任一关键词才算"引用"该维度）。
+# 修改本表会同步影响 prompt 里展示给 LLM 的"可接受关键词"列表（_schema_text）。
 A_DIM_ALIASES = {
-    "treasury_10y": ["10年国债", "10y", "treasury_10y", "10年期国债"],
-    "treasury_30y": ["30年国债", "30y", "treasury_30y", "30年期国债"],
-    "gold": ["黄金", "金", "gold"],
-    "oil": ["原油", "油", "oil"],
+    "treasury_10y": ["10年国债", "10y", "treasury_10y", "10年期国债", "10年期", "十年国债", "国债10y"],
+    "treasury_30y": ["30年国债", "30y", "treasury_30y", "30年期国债", "30年期", "三十年国债"],
+    "gold": ["黄金", "金", "gold", "贵金属", "金价"],
+    "oil": ["原油", "油", "oil", "石油", "wti", "布伦特"],
 }
 US_DIM_ALIASES = {
-    "treasury_10y": ["10年国债", "10y", "ief", "treasury_10y"],
-    "treasury_30y": ["30年国债", "30y", "tlt", "treasury_30y"],
-    "dollar": ["美元", "uup", "dollar", "美元指数"],
-    "gold": ["黄金", "gld", "金", "gold"],
-    "oil": ["原油", "uso", "油", "oil"],
-    "vix": ["vix", "vixy", "波动率"],
-    "btc": ["btc", "比特币", "ibit"],
-    "eth": ["eth", "以太", "etha"],
+    "treasury_10y": ["10年国债", "10y", "ief", "treasury_10y", "10年期", "10年期国债",
+                     "美10债", "10年美债", "10年期美债", "10y收益率", "10年收益率",
+                     "美债10y", "10年期债"],
+    "treasury_30y": ["30年国债", "30y", "tlt", "treasury_30y", "30年期", "30年期国债",
+                     "美30债", "30年美债", "30年期美债", "30y收益率", "长债"],
+    "dollar":       ["美元", "uup", "dollar", "美元指数", "dxy", "美汇", "美元走强", "美元走弱"],
+    "gold":         ["黄金", "gld", "金", "gold", "贵金属", "金价", "黄金价格"],
+    "oil":          ["原油", "uso", "油", "oil", "石油", "wti", "布伦特", "原油价格"],
+    "vix":          ["vix", "vixy", "波动率", "恐慌指数", "市场恐慌", "vix指数"],
+    "btc":          ["btc", "比特币", "ibit", "加密", "加密货币", "比特币价格", "数字货币"],
+    "eth":          ["eth", "以太", "etha", "以太坊", "ether"],
 }
 BREADTH_ALIASES = {
-    "above_ma150_count": ["above_ma150", "ma150", "30周均线", "above_ma150_count"],
-    "spy_iwm_divergence": ["spy_iwm", "大小盘", "spy_iwm_divergence"],
-    "new_high_count_20d": ["新高数", "新高数量", "new_high", "new_high_count"],
+    "above_ma150_count":  ["above_ma150", "ma150", "30周均线", "above_ma150_count",
+                           "站上150日", "150日线", "150日均线", "30周线", "above ma150",
+                           "上方ma150", "30周均线广度"],
+    "spy_iwm_divergence": ["spy_iwm", "大小盘", "spy_iwm_divergence", "spy", "iwm",
+                           "大小盘分化", "大盘小盘", "大小盘背离", "spy-iwm"],
+    "new_high_count_20d": ["新高数", "新高数量", "new_high", "new_high_count",
+                           "20日新高", "20日内新高", "20日新高数", "新高家数"],
 }
 
 DATA_MISSING_KEYWORDS = ["数据缺失", "暂缺", "不可用"]

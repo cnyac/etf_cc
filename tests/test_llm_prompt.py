@@ -151,6 +151,29 @@ def test_prompt_weekend_flag_skipped_on_weekday():
     assert "macro_cycle_anchor 填 null" in p
 
 
+def test_prompt_us_evidence_aliases_exposed():
+    """US druckenmiller / minervini 的 evidence alias 关键词必须在 prompt 里显式列出，
+    否则 LLM 不知道写哪些字面才会被识别（2026-05-21 用户实测修复）。"""
+    session = {
+        "label": "2026-05-20", "market": "US", "session_time": "close",
+        "tickers": [_mk_ticker("US")],
+        "panel": {"above_ma150_count": 24, "spy_iwm_divergence": 0.005,
+                  "cross_asset_state": {}},
+    }
+    p = build_prompt("US", session, [])
+    # druckenmiller 的关键 alias
+    assert "10Y" in p or "10y" in p  # treasury_10y alias
+    assert "美元指数" in p  # dollar alias
+    assert "vix" in p.lower()
+    assert "比特币" in p  # btc alias
+    # minervini 的关键 alias
+    assert "30周均线" in p or "ma150" in p.lower()
+    assert "大小盘" in p
+    assert "20日新高" in p or "新高数" in p
+    # 必须出现"字面出现"或类似的说明引导 LLM
+    assert "字面" in p
+
+
 def test_prompt_includes_strategy_outlook_schema():
     session = {"label": "L", "tickers": [_mk_ticker()], "panel": {}}
     p = build_prompt("A", session, [])

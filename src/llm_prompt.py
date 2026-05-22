@@ -80,7 +80,14 @@ def _short_key_map_text(market: str) -> str:
 
 
 def _schema_text(market: str) -> str:
-    """生成 schema 说明文本。"""
+    """生成 schema 说明文本。
+
+    对 druckenmiller / minervini 这类 evidence 有"必须引用 N 个维度"约束的字段，
+    把可接受的关键词 alias 一并打出来 —— 校验器做的是字面子串匹配，LLM 必须
+    在 evidence 里字面出现这些关键词之一才会被计数。
+    """
+    from src.llm_validate import US_DIM_ALIASES, A_DIM_ALIASES, BREADTH_ALIASES
+
     s = schema.get_schema(market)
     lines = [f"=== {market} 股双引擎 schema（你必须按此 JSON 结构返回） ==="]
     for fname, spec in s.items():
@@ -89,9 +96,18 @@ def _schema_text(market: str) -> str:
         for ek, ev in spec.get("enums", {}).items():
             lines.append(f"  enum {ek}: {ev}")
         if "evidence_min_dims" in spec:
-            lines.append(f"  evidence 至少引用 {spec['evidence_min_dims']} 个跨资产维度: {spec['cross_asset_dims']}")
+            dim_aliases = US_DIM_ALIASES if market == "US" else A_DIM_ALIASES
+            lines.append(f"  evidence 至少引用 {spec['evidence_min_dims']} 个跨资产维度："
+                         f"必须字面出现以下任一关键词才算引用：")
+            for dim in spec["cross_asset_dims"]:
+                aliases = dim_aliases.get(dim, [dim])
+                lines.append(f"    {dim}: {' / '.join(aliases)}")
         if "evidence_min_breadth_fields" in spec:
-            lines.append(f"  evidence 至少引用 {spec['evidence_min_breadth_fields']} 个广度字段: {spec['breadth_fields']}")
+            lines.append(f"  evidence 至少引用 {spec['evidence_min_breadth_fields']} 个广度字段："
+                         f"必须字面出现以下任一关键词才算引用：")
+            for f in spec["breadth_fields"]:
+                aliases = BREADTH_ALIASES.get(f, [f])
+                lines.append(f"    {f}: {' / '.join(aliases)}")
     return "\n".join(lines)
 
 

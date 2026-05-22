@@ -36,6 +36,23 @@
 4. enum 字段（如 stage / intensity / market_phase 等）必须严格使用 schema 给出的白名单值，
    不可创新词或用同义词替换。仅 actual_vs_expected 接受简写归一化（如上）。
 
+5. evidence 引用规则（**最容易失败**，仔细看）：
+   druckenmiller_macro_check / minervini_breadth_check / A 股各分类层人格的 evidence
+   字段，要求"引用至少 N 个跨资产维度 / 广度字段"。**校验是字面子串匹配**——你必须
+   在 evidence 里**字面出现 schema 下方列出的关键词之一**，才会被计数。
+
+   反例（任何关键词都没字面出现 → 0 引用）：
+     "市场广度健康，权重股普涨，资金风险偏好回升。"
+
+   正例 1（US druckenmiller，引用 4 个跨资产维度 + 数字 + 方向）：
+     "10Y 利率 +2bp 抑制估值，黄金 +0.8% 避险，VIX -3% 风险偏好回升，BTC +1.2% 加密多头延续。"
+
+   正例 2（US minervini，引用 3 个广度字段 + 具体数字）：
+     "above_ma150_count=24/45 站上 30 周均线广度健康，spy_iwm_divergence=-1.5% 大小盘背离扩大，20日新高 8 只动能未减。"
+
+   降级机制：若某维度数据缺失（panel 显示 null），在 evidence 末尾**字面加上**
+   "数据缺失" / "暂缺" / "不可用" 之一可放行（如：「…VIX 数据缺失」）。
+
 只返回 JSON，不要解释。
 {{ extra_top }}
 
