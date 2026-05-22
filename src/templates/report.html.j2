@@ -197,8 +197,16 @@
         {% else %}<td class="muted">—</td>{% endif %}
       {% endfor %}
       <td>{{ sparkline(code) }}</td>
-      <td class="center muted">—</td>
-      <td class="muted">—</td>
+      {# 变化评级 + 评级理由 = 读 current session 该 code 的 audit（#8 修复 2026-05-22） #}
+      {% set cur_t = (current.tickers | selectattr('code', 'equalto', code) | first) %}
+      {% set au = cur_t.audit if cur_t else None %}
+      <td class="center">
+        {% if au and au.actual_vs_expected %}
+          <span class="audit-badge audit-{{ au.actual_vs_expected }} auditor-{{ au.auditor or 'quant' }}"
+                title="审计人：{{ au.auditor or 'quant' }}">{{ au.actual_vs_expected }}</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td class="muted-2">{{ au.audit_note if (au and au.audit_note) else '—' }}</td>
     </tr>
   {% endfor %}
   </tbody>
@@ -434,6 +442,23 @@ td.center { text-align: center; }
 .sc-下跌 { color: var(--color-down); }
 .sc-震荡 { color: #555; }
 .sc-list { margin: 4px 0 0 16px; padding: 0; }
+/* §6 deep_analysis 长篇综合论证（#9 2026-05-22） */
+.deep-analysis-block {
+  background: #fbfaf7;
+  border-left: 4px solid #555;
+  padding: 14px 20px;
+  margin: 16px 0 24px;
+}
+.deep-analysis-block h3 {
+  margin: 0 0 10px;
+  /* h3 已有 楷体_GB2312 1.5em bold，继承即可，仅去掉默认外边距 */
+}
+.deep-analysis-body {
+  font-family: "仿宋_GB2312", "FangSong", "STFangsong", serif;
+  /* 与 §2 正文一致，body 1.5em 继承 */
+  line-height: 1.75;
+  text-align: justify;
+}
 
 /* §7 宏观周期 */
 .macro-card {
@@ -809,6 +834,13 @@ td.center { text-align: center; }
   </div>
   {% endif %}
 </div>
+{# deep_analysis 长篇综合论证（#9 2026-05-22）：以独立块展示，4 部分结构由 LLM 自由分段 #}
+{% if so.deep_analysis %}
+<div class="deep-analysis-block">
+  <h3>深度综合论证</h3>
+  <div class="deep-analysis-body">{{ so.deep_analysis | replace("\n", "<br>") | safe }}</div>
+</div>
+{% endif %}
 {% endif %}
 
 {# ============ §7 宏观周期定位与历史极值映射（仅周末收盘）============ #}

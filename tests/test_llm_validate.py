@@ -384,6 +384,26 @@ def test_merge_ticker_audits_overrides_quant():
 
 # ---------- 新顶层字段 ----------
 
+_DEEP_OK = (
+    "今日 A 股呈现典型分化：上涨 15/45 占比 33%，强势仅 1 只，量能整体收缩。"
+    "市场资金全景图层面，板块结构呈现高低切但缺乏增量血液；行业属性上传统消费与高位"
+    "题材同步调整，反映场内资金对估值锚不再笃定。从宏观资金维度看，避险资产受到追逐，"
+    "成长股则普遍承压，市场风险偏好整体回落。\n\n"
+    "关键异动板块解读：(1) 银行 ETF 放量大涨 2%，量价齐升 → 资金避险拥抱低波动确定性"
+    "标的；(2) 证券保险弱势 → 与银行板块背离印证当前是防守而非进攻格局；"
+    "(3) 半导体缩量阴跌 → 多头止损被动，主线资金外撤；(4) 黄金 ETF 放量上行 → 跨"
+    "资产避险情绪共振，与权益市场情绪形成鲜明对照；(5) 创业板情绪 ETF 萎靡 → 投机资金"
+    "退场。\n\n"
+    "交叉验证：权重大涨 + 题材普跌 = 典型存量博弈跷跷板效应，结合国债同涨"
+    "和 10 年期收益率回落判定为典型 Risk-off 阶段。市场风格在快速从增量进攻切换到防御"
+    "存量博弈，资金对 AI/半导体核心成长链估值的容忍度边际下降。\n\n"
+    "结论：当前处于高位分歧阶段，资金主攻方向为低波动防御资产与黄金避险标的，"
+    "出逃方向为高位题材股与小市值情绪题材，潜在风险点为机构集体调仓引发踩踏；"
+    "大势震荡偏弱，风格偏向防守，核心关注证券板块是否补涨与 10 年期国债收益率的"
+    "二次确认信号。"
+)
+
+
 def test_strategy_outlook_valid():
     so = {
         "market_phase": "趋势主升", "trend_forecast": "上涨", "style_tone": "偏向进攻",
@@ -391,6 +411,7 @@ def test_strategy_outlook_valid():
         "retreat_direction": "传统消费 + 高位地产",
         "key_focus": ["证券板块是否补涨", "10 年期国债收益率"],
         "risk_points": ["机构调仓引发踩踏", "外资突然撤离"],
+        "deep_analysis": _DEEP_OK,
     }
     n = {"is_skeleton": False, "session_summary": "x",
          "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
@@ -400,11 +421,29 @@ def test_strategy_outlook_valid():
     assert ok, errors
 
 
+def test_strategy_outlook_deep_analysis_too_short():
+    """deep_analysis 必填，且至少 400 字（#9 2026-05-22）。"""
+    so = {
+        "market_phase": "趋势主升", "trend_forecast": "上涨", "style_tone": "偏向进攻",
+        "attack_direction": "x", "retreat_direction": "x",
+        "key_focus": ["a"], "risk_points": ["b"],
+        "deep_analysis": "太短了" * 5,  # < 400 字
+    }
+    n = {"is_skeleton": False, "session_summary": "x",
+         "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
+         "fengliu_contrarian_check": None, "trading_discipline_review": None,
+         "strategy_outlook": so}
+    ok, errors = validate_narrative(n, "A")
+    assert not ok
+    assert any("deep_analysis" in e for e in errors)
+
+
 def test_strategy_outlook_bad_enum():
     so = {
         "market_phase": "牛市顶", "trend_forecast": "上涨", "style_tone": "偏向进攻",
         "attack_direction": "x", "retreat_direction": "x",
         "key_focus": ["a"], "risk_points": ["b"],
+        "deep_analysis": _DEEP_OK,
     }
     n = {"is_skeleton": False, "session_summary": "x",
          "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": None,
@@ -456,7 +495,7 @@ def test_ticker_audits_rejects_quant_auditor():
 
 
 def test_key_movers_too_few():
-    """zhaolaoge 必须 ≥2 条 key_movers。"""
+    """zhaolaoge 必须 ≥3 条 key_movers（#9 2026-05-22 上调阈值）。"""
     zhao = {
         "anchor_etfs": ["SH510050"],
         "liquidity_signal": "主线合力",
@@ -466,7 +505,8 @@ def test_key_movers_too_few():
         "free_analysis": "x" * 50,
         "key_movers": [
             {"sector": "AI", "phenomenon": "放量上涨", "motive": "机构进攻", "scenario": "持续主升"},
-        ],
+            {"sector": "半导体", "phenomenon": "放量", "motive": "补涨", "scenario": "续涨"},
+        ],  # 只有 2 条，< 3
     }
     n = {"is_skeleton": False, "session_summary": "x",
          "yangjia_emotion_cycle": None, "zhaolaoge_liquidity_focus": zhao,

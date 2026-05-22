@@ -19,6 +19,7 @@ from src.llm_schema import (
     A_CROSS_ASSET_DIMS, US_CROSS_ASSET_DIMS, MINERVINI_BREADTH_FIELDS,
     FREE_ANALYSIS_MAX, TICKER_ANALYSIS_MIN, TICKER_ANALYSIS_MAX,
     PANORAMA_LEN, CROSS_VALIDATION_LEN, CROSS_ASSET_PANORAMA_LEN, AUDIT_NOTE_MAX,
+    DEEP_ANALYSIS_LEN,
     KEY_MOVERS_MIN, KEY_MOVER_REQUIRED,
     ENUM_AUDIT_RATING, ENUM_AUDITOR,
     ENUM_MARKET_PHASE, ENUM_TREND_FORECAST, ENUM_STYLE_TONE,
@@ -271,7 +272,7 @@ def _validate_discipline(reviews, market: str, errors: list) -> None:
 
 
 def _validate_strategy_outlook(so, errors: list) -> None:
-    """任务 3.4 七子项 enum + 必填检查。"""
+    """任务 3.4 / #9：8 子项 enum + 必填 + deep_analysis 长度。"""
     if so is None:
         return
     if not isinstance(so, dict):
@@ -286,6 +287,9 @@ def _validate_strategy_outlook(so, errors: list) -> None:
         v = so.get(k)
         if v is not None and not isinstance(v, list):
             errors.append(f"strategy_outlook.{k} 应为 list[str]")
+    # deep_analysis 长度（#9 2026-05-22）
+    _check_length_range(so.get("deep_analysis"), DEEP_ANALYSIS_LEN,
+                        "strategy_outlook.deep_analysis", errors)
 
 
 def _validate_unique_anomaly(text, errors: list) -> None:

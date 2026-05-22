@@ -70,10 +70,36 @@ def _score_to_rating(score: int) -> str:
     return "强低于预期"
 
 
+def _audit_note(prev_cat, curr_cat, today_pct, vr, d1, d2) -> str:
+    """生成简短的中文理由（≤80 字），让用户/LLM 看懂打分依据。"""
+    parts = []
+    if prev_cat and curr_cat:
+        if prev_cat == curr_cat:
+            parts.append(f"维持{curr_cat}")
+        else:
+            parts.append(f"{prev_cat}→{curr_cat}")
+        parts.append(f"D1{d1:+d}")
+    pct_txt = f"{today_pct*100:+.2f}%" if today_pct is not None else "—"
+    vr_txt = f"{vr:.2f}x" if vr is not None else "—"
+    if today_pct is not None and vr is not None:
+        if today_pct > 0 and vr >= VOL_HIGH:
+            tag = "放量上涨"
+        elif today_pct > 0 and vr < VOL_LOW:
+            tag = "缩量上涨"
+        elif today_pct < 0 and vr >= VOL_HIGH:
+            tag = "放量下跌"
+        elif today_pct < 0 and vr < VOL_LOW:
+            tag = "缩量下跌"
+        else:
+            tag = "量价中性"
+        parts.append(f"{tag}({pct_txt}/{vr_txt}) D2{d2:+d}")
+    return "，".join(parts) or "无对照数据"
+
+
 def quant_audit_ticker(prev_ticker: Optional[dict],
                        curr_ticker: dict) -> Optional[dict]:
     """对一只 ticker 做量化审。
-    返回 {actual_vs_expected, auditor: "quant"} 或 None（无上一时段数据）。
+    返回 {actual_vs_expected, auditor: "quant", audit_note} 或 None（无上一时段数据）。
     """
     if prev_ticker is None:
         return None
@@ -83,10 +109,13 @@ def quant_audit_ticker(prev_ticker: Optional[dict],
     factors = curr_ticker.get("factors") or {}
     vr = factors.get("vol_ratio_20")
 
-    score = _d1_score(prev_cat, curr_cat) + _d2_score(today_pct, vr)
+    d1 = _d1_score(prev_cat, curr_cat)
+    d2 = _d2_score(today_pct, vr)
+    score = d1 + d2
     return {
         "actual_vs_expected": _score_to_rating(score),
         "auditor": "quant",
+        "audit_note": _audit_note(prev_cat, curr_cat, today_pct, vr, d1, d2),
     }
 
 

@@ -211,7 +211,8 @@ STRATEGY_OUTLOOK_SCHEMA = {
     },
     "required": ["market_phase", "trend_forecast", "style_tone",
                  "attack_direction", "retreat_direction", "key_focus",
-                 "risk_points"],
+                 "risk_points",
+                 "deep_analysis"],   # 任务 #9 2026-05-22：长篇综合论证
     "nullable": True,
 }
 
@@ -270,5 +271,6 @@ PANORAMA_LEN = (150, 400)
 CROSS_VALIDATION_LEN = (100, 300)
 CROSS_ASSET_PANORAMA_LEN = (150, 500)  # 美股 druckenmiller 跨资产全景段
 AUDIT_NOTE_MAX = 80
-KEY_MOVERS_MIN = 2  # 赵老哥 / 冯柳 各 ≥2 条
+KEY_MOVERS_MIN = 3  # 赵老哥 / 冯柳 / wyckoff / weinstein 各 ≥3 条（#9 2026-05-22）
+DEEP_ANALYSIS_LEN = (400, 1200)  # strategy_outlook.deep_analysis 长篇综合论证
 KEY_MOVER_REQUIRED = ["sector", "phenomenon", "motive", "scenario"]

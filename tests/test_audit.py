@@ -76,11 +76,15 @@ def test_rating_bands():
 # ---------------- quant_audit_ticker ----------------
 
 def test_audit_strong_reversal_up_with_volume():
-    """强反转→持续强化 (+3) + 涨+放量 (+1) = +4 → 强超于预期"""
+    """强反转→持续强化 (+3) + 涨+放量 (+1) = +4 → 强超于预期。
+    audit_note 2026-05-22 新增（D1+D2 中文简述），断主字段而非整 dict 相等。"""
     prev = _t("X", category="强反转")
     curr = _t("X", today_pct=0.03, category="持续强化", vol_ratio_20=1.6)
     r = audit.quant_audit_ticker(prev, curr)
-    assert r == {"actual_vs_expected": "强超于预期", "auditor": "quant"}
+    assert r["actual_vs_expected"] == "强超于预期"
+    assert r["auditor"] == "quant"
+    assert "强反转→持续强化" in r["audit_note"]
+    assert "放量上涨" in r["audit_note"]
 
 
 def test_audit_persistent_strength_with_shrink():

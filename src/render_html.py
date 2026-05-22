@@ -276,6 +276,95 @@ def _short_label(label: str) -> str:
     return label or ""
 
 
+def _load_neighbor_sessions(market: str, target: dict,
+                            n: int = 2) -> list[dict]:
+    """从 data/snapshots/<m>/*.json 找比 target.trade_date 更早的最近 n 个同
+    session_time 的 session。返回升序列表（旧→新）。
+
+    解耦渲染与窗口状态：窗口可能被 backfill 弹掉 4月28~5月20 这 17 天，但
+    snapshots/ 永久归档完整。§3 表格的"邻近 3 时段"应来自 snapshots，不该
+    依赖窗口 history 的顺序（修复 #7，2026-05-22）。
+    """
+    import json as _json
+
+    target_date = target.get("trade_date")
+    if not target_date:
+        return []
+    target_st = target.get("session_time", "close")
+    snap_dir = os.path.join(win.SNAPSHOT_DIR, market.lower())
+    if not os.path.isdir(snap_dir):
+        return []
+
+    candidates: list[tuple[str, str]] = []  # (trade_date, filepath)
+    for fn in os.listdir(snap_dir):
+        if not fn.endswith(".json"):
+            continue
+        # 文件名规则：A 股 'YYYY-MM-DD-{午|收}.json'；美股 'YYYY-MM-DD.json'
+        label_str = fn[:-5]
+        # 推断 session_time
+        if label_str.endswith("-午"):
+            st = "noon"; trade_date = label_str[:-2].rstrip("-")
+        elif label_str.endswith("-收"):
+            st = "close"; trade_date = label_str[:-2].rstrip("-")
+        else:
+            st = "close"; trade_date = label_str
+        # 严格早于 target 且同 session_time
+        if trade_date >= target_date:
+            continue
+        if st != target_st:
+            continue
+        candidates.append((trade_date, os.path.join(snap_dir, fn)))
+
+    candidates.sort(key=lambda x: x[0])
+    chosen = candidates[-n:]
+    out = []
+    for _, fp in chosen:
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                out.append(_json.load(f))
+        except Exception:
+            continue
+    return out
+
+
+def _load_recent_sessions(market: str, target: dict,
+                          n: int = 30) -> list[dict]:
+    """加载 target 之前最近 n 个 snapshot（按 trade_date 升序，全 session_time）。
+    供 §4 §5 跨日追踪/矩阵选品种用。"""
+    import json as _json
+
+    target_date = target.get("trade_date")
+    if not target_date:
+        return []
+    snap_dir = os.path.join(win.SNAPSHOT_DIR, market.lower())
+    if not os.path.isdir(snap_dir):
+        return []
+
+    candidates = []
+    for fn in os.listdir(snap_dir):
+        if not fn.endswith(".json"):
+            continue
+        label_str = fn[:-5]
+        if label_str.endswith("-午") or label_str.endswith("-收"):
+            trade_date = label_str[:-2].rstrip("-")
+        else:
+            trade_date = label_str
+        if trade_date >= target_date:
+            continue
+        candidates.append((trade_date, label_str, os.path.join(snap_dir, fn)))
+
+    candidates.sort(key=lambda x: (x[0], x[1]))
+    chosen = candidates[-n:]
+    out = []
+    for _, _, fp in chosen:
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                out.append(_json.load(f))
+        except Exception:
+            continue
+    return out
+
+
 def _build_groups(target: dict, history: list[dict]) -> list[dict]:
     """为 §3 三行渲染构造品种组：每个 group = 当前 session 的 ticker + 它在
     history[-2:] 同 code 的历史行（按时间升序，最多 3 行）。
@@ -346,10 +435,20 @@ def render(market: Literal["A", "US"], label: str) -> str:
         history = [s for s in data["sessions"] if s["label"] != label]
 
     name_map = {t["code"]: t.get("name", t["code"]) for t in target["tickers"]}
-    groups = _build_groups(target, history)
+
+    # 渲染上下文与窗口解耦（修复 #7 2026-05-22）：
+    # - §3 表格"合并三个日期"需要严格的 target 邻近 2 个同 session_time
+    # - §4 §5 跨日追踪/矩阵选品种需要 target 之前最近 30 个 snapshot
+    # 窗口 history 可能被 backfill 弹出新数据，渲染必须直读 snapshots/
+    neighbors_for_groups = _load_neighbor_sessions(market, target, n=2)
+    recent_for_tracking = _load_recent_sessions(market, target, n=30)
+
+    groups = _build_groups(target, neighbors_for_groups)
     tickers_by_cat = _bucket_groups_by_category(groups)
-    tracking_codes = _pick_tracking_codes(target, history)
-    matrix_codes = _pick_matrix_codes(target, history)
+    tracking_codes = _pick_tracking_codes(target, recent_for_tracking)
+    matrix_codes = _pick_matrix_codes(target, recent_for_tracking)
+    # tracking_table / matrix_view 模板用的 history 也用 snapshots 版本
+    history = recent_for_tracking
 
     # 内嵌的 snapshot 简化：只保留必要字段，避免 HTML 过大
     snapshot_payload = {
