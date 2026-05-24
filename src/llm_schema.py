@@ -261,7 +261,16 @@ def get_schema(market: str) -> dict:
 #   - ticker_audits: {code: {actual_vs_expected, auditor}}  少数 ticker 升级人格审
 TOP_LEVEL_REQUIRED = ["is_skeleton", "session_summary"]
 TOP_LEVEL_OPTIONAL = ["strategy_outlook", "unique_anomaly_analysis",
-                      "macro_cycle_anchor", "ticker_analyses", "ticker_audits"]
+                      "macro_cycle_anchor", "ticker_analyses", "ticker_audits",
+                      "quadrant_summaries", "group_qualitative"]
+
+# 象限小结相关常量（E 批新增 2026-05-24）
+QUADRANT_CATS = ("持续强化", "反包修复", "强反转", "连续杀跌")
+QUADRANT_SUMMARY_MIN = 40            # 每象限小结下限 40 字（避免占位 ____ 蒙混）
+QUADRANT_SUMMARY_MAX = None          # 上限同其他自由文本字段：None
+GROUP_QUALITATIVE_KEYS = ("bull_group", "bear_group")
+GROUP_QUALITATIVE_MIN = 20           # 组整体定性下限 20 字
+GROUP_QUALITATIVE_MAX = None
 
 # 长度约束（2026-05-22 用户全场放开上限：LLM 字段只保留下限确保不偷工，
 # 上限统一 None 让 LLM 按需写够。AUDIT_NOTE_MAX / FREE_ANALYSIS_MAX 保留常量供

@@ -85,7 +85,9 @@
 {% endmacro %}
 
 {# category_table 接 group list；每 group 渲染 1-3 行（按窗口里该 code 实际出现的时段数）。
-   代码 / 名称 / 批注 列跨整组 rowspan；其它列每时段独立一行。 #}
+   代码 / 名称 列跨整组 rowspan，不染色（视觉头部）；其它列每时段独立一行，
+   含批注：每行独立、按该行所属时段的批注染色；仅当前时段（最末行）可点击编辑。
+   F.1：旧叙事冻结原则——历史时段批注只读，不允许在本报告里改昨日的判断。 #}
 {% macro category_table(groups) %}
 <table>
   <thead>
@@ -100,35 +102,42 @@
       <th style="width:50px">均线</th>
       <th>标签 / LLM 点评</th>
       <th style="width:90px">预期审计</th>
-      <th style="width:240px">批注（点击此列编辑）</th>
+      <th style="width:240px">批注（点击当前时段编辑）</th>
     </tr>
   </thead>
   <tbody>
   {% for g in groups %}
     {% set rs = g.rows|length %}
-    {% set bg = g.annotation_color %}
     {% for r in g.rows %}
       {% set f = r.factors or {} %}
       {% set pn = f.pct_normalized %}
       {% set outlier = (pn is not none and (pn > 2 or pn < -2)) %}
       <tr data-code="{{ g.code }}"
+          {% if r.is_current %}data-row-current="true"{% endif %}
           class="tr-clickable{% if outlier %} outlier-row{% endif %}{% if loop.last and rs > 1 %} group-end{% endif %}"
-          {% if bg %}style="background-color:{{ bg }};"{% endif %}>
+          {% if r.annotation_color %}style="--row-bg:{{ r.annotation_color }};"{% endif %}>
         {% if loop.first %}
-          <td rowspan="{{ rs }}">{{ g.code[2:] if g.code|length > 6 else g.code }}{% if r.new_high_20d %} <span class="up">★</span>{% elif r.new_low_20d %} <span class="down">▼</span>{% endif %}{% if outlier %} <span class="warn">⚠</span>{% endif %}</td>
-          <td rowspan="{{ rs }}">{{ g.name or '' }}</td>
+          <td rowspan="{{ rs }}" class="group-name-cell">{{ g.code[2:] if g.code|length > 6 else g.code }}{% if r.new_high_20d %} <span class="up">★</span>{% elif r.new_low_20d %} <span class="down">▼</span>{% endif %}{% if outlier %} <span class="warn">⚠</span>{% endif %}</td>
+          <td rowspan="{{ rs }}" class="group-name-cell">{{ g.name or '' }}</td>
         {% endif %}
         <td class="center muted-small">{{ r.label_short }}</td>
         <td class="num">
           <span class="{{ pct_class(r.today_pct) }}">{{ pct_fmt(r.today_pct) }}</span><br>
           <span class="muted">{{ pct_fmt(r.yest_pct) }}</span>
         </td>
-        <td class="num"><span class="{{ pct_class(r.pct_diff) }}">{{ pct_fmt(r.pct_diff) }}</span></td>
-        <td class="num">
+        {%- set rs_b = f.get('rs_vs_benchmark') -%}
+        <td class="num"{% if rs_b is not none %} title="相对基准强度 {{ '%+.2f'|format(rs_b * 100) }}%（自身今涨幅 − 基准ETF今涨幅）"{% endif %}><span class="{{ pct_class(r.pct_diff) }}">{{ pct_fmt(r.pct_diff) }}</span></td>
+        {%- set vstd = f.get('vol_std_20') -%}
+        <td class="num"{% if vstd is not none %} title="20日收益率标准差 σ={{ '%.4f'|format(vstd) }}（这段时间整体颠不颠）"{% endif %}>
           {% if f.vol_ratio_20 is not none %}{{ '%.2fx'|format(f.vol_ratio_20) }}{% else %}—{% endif %}<br>
           <span class="muted">{% if f.vol_pctile_20 is not none %}P{{ f.vol_pctile_20 }}{% endif %}</span>
         </td>
-        <td class="num">
+        {%- set er = f.get('er60') -%}{%- set mdd = f.get('mdd60') -%}{%- set slp = f.get('slope_seg') -%}
+        {%- set ns = namespace(tips=[]) -%}
+        {%- if er is not none -%}{%- set ns.tips = ns.tips + ['60日路径效率 ' + ('%.2f'|format(er)) + '（1=平滑直线，越低越曲折）'] -%}{%- endif -%}
+        {%- if mdd is not none -%}{%- set ns.tips = ns.tips + ['60日最大回撤 ' + ('%.1f'|format(mdd * 100)) + '%'] -%}{%- endif -%}
+        {%- if slp -%}{%- set ns.tips = ns.tips + ['分段斜率 远/中/近 ' + ('%+.1f'|format(slp[0] * 100)) + '/' + ('%+.1f'|format(slp[1] * 100)) + '/' + ('%+.1f'|format(slp[2] * 100)) + '%'] -%}{%- endif -%}
+        <td class="num"{% if ns.tips %} title="{{ ns.tips|join(' | ') }}"{% endif %}>
           {% if f.price_pctile_60 is not none %}P{{ f.price_pctile_60 }}{% else %}—{% endif %}<br>
           <span class="muted">{% if f.price_pctile_20 is not none %}P{{ f.price_pctile_20 }}{% endif %}</span>
         </td>
@@ -155,10 +164,15 @@
                   title="审计人：{{ r.audit.auditor }}">{{ r.audit.actual_vs_expected }}</span>
           {% else %}<span class="muted">—</span>{% endif %}
         </td>
-        {% if loop.first %}
-          <td rowspan="{{ rs }}" class="annotation-cell" data-anno-cell-for="{{ g.code }}">
-            {% if g.annotation_note %}{{ g.annotation_note }}
+        {% if r.is_current %}
+          <td class="annotation-cell" data-anno-cell-for="{{ g.code }}">
+            {% if r.annotation_note %}{{ r.annotation_note }}
             {% else %}<span class="muted ann-placeholder">点击行编辑批注</span>{% endif %}
+          </td>
+        {% else %}
+          <td class="annotation-cell-historical" title="历史时段批注（只读；按禁区#10 旧叙事冻结）">
+            {% if r.annotation_note %}{{ r.annotation_note }}
+            {% else %}<span class="muted ann-placeholder">—</span>{% endif %}
           </td>
         {% endif %}
       </tr>
@@ -417,6 +431,39 @@ td.center { text-align: center; }
   line-height: 1.7;
 }
 
+/* §3 象限小结块（E.2 反馈 2）：紧贴分类表格下方的纯文本小结 */
+.quadrant-summary {
+  background: #f5f9fc;
+  border-left: 4px solid #1565c0;
+  padding: 10px 14px;
+  margin: 4px 0 14px;
+  font-family: "仿宋_GB2312", "FangSong", serif;
+  font-size: 1.45em;
+  line-height: 1.6;
+}
+.quadrant-summary .qs-label {
+  font-family: "黑体", "SimHei", sans-serif;
+  font-size: 0.95em;
+  color: #1565c0;
+  margin-right: 8px;
+}
+/* §3 组整体定性块：在所属组最后一个象限表后出现，过渡视角 */
+.group-qualitative {
+  background: #fff;
+  border: 1px dashed #888;
+  padding: 10px 14px;
+  margin: 4px 0 18px;
+  font-family: "仿宋_GB2312", "FangSong", serif;
+  font-size: 1.45em;
+  line-height: 1.6;
+}
+.group-qualitative .gq-label {
+  font-family: "黑体", "SimHei", sans-serif;
+  font-size: 0.95em;
+  color: #333;
+  margin-right: 8px;
+}
+
 /* §6 策略前瞻 */
 .strategy-grid {
   display: grid;
@@ -485,14 +532,22 @@ td.center { text-align: center; }
   color: #333;
   margin-top: 2px;
 }
-.annotation-cell {
+.annotation-cell,
+.annotation-cell-historical {
   font-family: "仿宋_GB2312", "FangSong", serif;
   font-size: 0.95em;
   line-height: 1.5;
   color: #222;
   white-space: pre-wrap;
 }
-.annotation-cell .ann-placeholder { font-size: 0.85em; }
+.annotation-cell .ann-placeholder,
+.annotation-cell-historical .ann-placeholder { font-size: 0.85em; }
+
+/* F.1：行级背景色——按各行所属时段的批注 annotation_color 染色，
+   但 rowspan 的代码/名称列（.group-name-cell）保持中性，作为视觉头部。 */
+tr[style*="--row-bg"] > td:not([rowspan]) {
+  background-color: var(--row-bg);
+}
 
 /* 三球：红=above, 深蓝=below, 灰=near。避免绿色（用户色盲） */
 .ma-dots { display: inline-flex; gap: 2px; align-items: center; }
@@ -609,6 +664,8 @@ td.center { text-align: center; }
 
 .annotation-cell { cursor: pointer; }
 .annotation-cell:hover { background: #fffbeb; outline: 2px solid #f5d28a; outline-offset: -2px; }
+/* 历史时段批注（只读）：默认光标 + 无 hover 高亮，提示用户这是只读区 */
+.annotation-cell-historical { cursor: default; }
 
 #ann-modal {
   display: none;
@@ -784,11 +841,25 @@ td.center { text-align: center; }
 
 {# ============ §3 四分类表 ============ #}
 <h2>§3 分类详情</h2>
+{% set qs_map = (n.quadrant_summaries if n else {}) or {} %}
+{% set gq = (n.group_qualitative if n else {}) or {} %}
 {% for cat in ['持续强化', '反包修复', '强反转', '连续杀跌'] %}
   {% set rows = tickers_by_cat[cat] %}
   {% if rows %}
     <h3>{{ cat }}（{{ rows|length }} 只）</h3>
     {{ category_table(rows) }}
+    {% set qs = qs_map.get(cat) %}
+    {% if qs %}
+      <div class="quadrant-summary"><span class="qs-label">【{{ cat }} · 小结】</span>{{ qs | panel_to_cn }}</div>
+    {% endif %}
+  {% endif %}
+  {# 多头组（持续强化+反包修复）末尾插入多头组整体定性 #}
+  {% if cat == '反包修复' and gq.get('bull_group') %}
+    <div class="group-qualitative"><span class="gq-label">【多头组整体定性】</span>{{ gq.bull_group | panel_to_cn }}</div>
+  {% endif %}
+  {# 空头组（强反转+连续杀跌）末尾插入空头组整体定性 #}
+  {% if cat == '连续杀跌' and gq.get('bear_group') %}
+    <div class="group-qualitative"><span class="gq-label">【空头组整体定性】</span>{{ gq.bear_group | panel_to_cn }}</div>
   {% endif %}
 {% endfor %}
 
@@ -948,13 +1019,15 @@ function showSaved(ts) {
   $('unsaved-banner').classList.remove('show');
   $('save-watermark').textContent = '已保存 ' + ts;
 }
+// F.1：批注按行独立 + 只有当前时段（data-row-current）可编辑。
+// applyRowStyle 仅更新当前时段那一行（历史行的批注是 server-render 静态产物，不动）。
 function applyRowStyle(code) {
-  const tr = document.querySelector(`tr[data-code="${code}"]`);
+  const tr = document.querySelector(`tr[data-code="${code}"][data-row-current="true"]`);
   if (!tr) return;
   const ann = annotations[code];
   const cell = document.querySelector(`[data-anno-cell-for="${code}"]`);
   if (ann && ann.color) {
-    tr.style.backgroundColor = ann.color;
+    tr.style.setProperty('--row-bg', ann.color);
     tr.title = ann.note || '';
     if (cell) {
       cell.innerHTML = '';
@@ -965,7 +1038,7 @@ function applyRowStyle(code) {
       }
     }
   } else {
-    tr.style.backgroundColor = '';
+    tr.style.removeProperty('--row-bg');
     tr.title = '';
     if (cell) {
       cell.innerHTML = '<span class="muted ann-placeholder">点击行编辑批注</span>';
@@ -973,7 +1046,8 @@ function applyRowStyle(code) {
   }
 }
 function applyAllRowStyles() {
-  document.querySelectorAll('tr[data-code]').forEach(tr => applyRowStyle(tr.dataset.code));
+  document.querySelectorAll('tr[data-code][data-row-current="true"]').forEach(
+    tr => applyRowStyle(tr.dataset.code));
 }
 
 // ---------- modal ----------

@@ -17,6 +17,8 @@ from typing import Iterable
 from src.llm_schema import (
     get_schema, TOP_LEVEL_REQUIRED,
     A_CROSS_ASSET_DIMS, US_CROSS_ASSET_DIMS, MINERVINI_BREADTH_FIELDS,
+    QUADRANT_CATS, QUADRANT_SUMMARY_MIN, QUADRANT_SUMMARY_MAX,
+    GROUP_QUALITATIVE_KEYS, GROUP_QUALITATIVE_MIN, GROUP_QUALITATIVE_MAX,
     FREE_ANALYSIS_MAX, TICKER_ANALYSIS_MIN, TICKER_ANALYSIS_MAX,
     PANORAMA_LEN, CROSS_VALIDATION_LEN, CROSS_ASSET_PANORAMA_LEN, AUDIT_NOTE_MAX,
     DEEP_ANALYSIS_LEN,
@@ -367,6 +369,60 @@ def _validate_ticker_analyses(ta, errors: list) -> None:
             errors.append(f"ticker_analyses[{code}] 太长（{n} 字 > {TICKER_ANALYSIS_MAX}）")
 
 
+def _validate_quadrant_summaries(qs, errors: list) -> None:
+    """quadrant_summaries: null 或 {cat: text}，key 限白名单 4 enum。"""
+    if qs is None:
+        return
+    if not isinstance(qs, dict):
+        errors.append("quadrant_summaries 应为 dict 或 null")
+        return
+    for cat, text in qs.items():
+        if cat not in QUADRANT_CATS:
+            errors.append(f"quadrant_summaries key {cat!r} 不在白名单 {QUADRANT_CATS}")
+            continue
+        if text is None:
+            continue  # 候选数=0 的象限允许 null
+        if not isinstance(text, str):
+            errors.append(f"quadrant_summaries[{cat}] 应为字符串或 null")
+            continue
+        n = len(text)
+        if n < QUADRANT_SUMMARY_MIN:
+            errors.append(
+                f"quadrant_summaries[{cat}] 太短（{n} 字 < {QUADRANT_SUMMARY_MIN}）"
+            )
+        elif QUADRANT_SUMMARY_MAX is not None and n > QUADRANT_SUMMARY_MAX:
+            errors.append(
+                f"quadrant_summaries[{cat}] 太长（{n} 字 > {QUADRANT_SUMMARY_MAX}）"
+            )
+
+
+def _validate_group_qualitative(gq, errors: list) -> None:
+    """group_qualitative: null 或 {bull_group?, bear_group?}。"""
+    if gq is None:
+        return
+    if not isinstance(gq, dict):
+        errors.append("group_qualitative 应为 dict 或 null")
+        return
+    for key, text in gq.items():
+        if key not in GROUP_QUALITATIVE_KEYS:
+            errors.append(f"group_qualitative key {key!r} 不在白名单 {GROUP_QUALITATIVE_KEYS}")
+            continue
+        if text is None:
+            continue
+        if not isinstance(text, str):
+            errors.append(f"group_qualitative[{key}] 应为字符串或 null")
+            continue
+        n = len(text)
+        if n < GROUP_QUALITATIVE_MIN:
+            errors.append(
+                f"group_qualitative[{key}] 太短（{n} 字 < {GROUP_QUALITATIVE_MIN}）"
+            )
+        elif GROUP_QUALITATIVE_MAX is not None and n > GROUP_QUALITATIVE_MAX:
+            errors.append(
+                f"group_qualitative[{key}] 太长（{n} 字 > {GROUP_QUALITATIVE_MAX}）"
+            )
+
+
 def validate_narrative(narrative: dict, market: str,
                        panel: dict | None = None,
                        is_weekend_close: bool = False) -> tuple[bool, list[str]]:
@@ -392,6 +448,8 @@ def validate_narrative(narrative: dict, market: str,
     _validate_unique_anomaly(narrative.get("unique_anomaly_analysis"), errors)
     _validate_macro_cycle(narrative.get("macro_cycle_anchor"), is_weekend_close, errors)
     _validate_ticker_audits(narrative.get("ticker_audits"), errors)
+    _validate_quadrant_summaries(narrative.get("quadrant_summaries"), errors)
+    _validate_group_qualitative(narrative.get("group_qualitative"), errors)
 
     schema = get_schema(market)
 

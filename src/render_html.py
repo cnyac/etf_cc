@@ -422,6 +422,7 @@ def _build_groups(target: dict, history: list[dict]) -> list[dict]:
         for sess in recent:
             for ts in sess.get("tickers", []):
                 if ts["code"] == code:
+                    row_ann = ts.get("annotation") or {}
                     g["rows"].append({
                         "label_short": _short_label(sess.get("label", "")),
                         "today_pct": ts.get("today_pct"),
@@ -433,6 +434,10 @@ def _build_groups(target: dict, history: list[dict]) -> list[dict]:
                         "new_low_20d": ts.get("new_low_20d"),
                         "analysis": ts.get("analysis"),
                         "audit": ts.get("audit"),  # 阶段 B 填入
+                        # F.1：每行带上该行所属 session 的批注 + 是否当前时段
+                        "annotation_color": row_ann.get("color"),
+                        "annotation_note": row_ann.get("note"),
+                        "is_current": sess is target,
                     })
                     break
         groups.append(g)

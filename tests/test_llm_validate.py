@@ -77,6 +77,92 @@ def test_missing_session_summary():
     assert any("session_summary" in e for e in errors)
 
 
+# ---------- E.2：quadrant_summaries + group_qualitative ----------
+
+def _wrap_skeleton_with(extra: dict) -> dict:
+    """构造最小骨架 narrative + extra 字段，只测可选字段本身。
+    骨架走 is_skeleton=True 路径会跳过 LLM 校验，这里手动构造非骨架的最小 narrative。"""
+    return {"is_skeleton": False, "session_summary": "测试摘要", **extra}
+
+
+def test_quadrant_summaries_null_ok():
+    """quadrant_summaries 为 null → 通过（可选字段）。"""
+    n = _wrap_skeleton_with({"quadrant_summaries": None})
+    # 直接调用子校验函数，避开其他必填字段（人格等）的干扰
+    from src.llm_validate import _validate_quadrant_summaries
+    errors: list = []
+    _validate_quadrant_summaries(n["quadrant_summaries"], errors)
+    assert errors == []
+
+
+def test_quadrant_summaries_unknown_key_rejected():
+    """key 不在白名单 4 enum 之内 → 报错。"""
+    from src.llm_validate import _validate_quadrant_summaries
+    errors: list = []
+    _validate_quadrant_summaries({"震荡盘整": "x" * 50}, errors)
+    assert any("不在白名单" in e for e in errors)
+
+
+def test_quadrant_summaries_too_short_rejected():
+    """每段 < 40 字 → 报错（避免 LLM 用 ____ 占位蒙混）。"""
+    from src.llm_validate import _validate_quadrant_summaries
+    errors: list = []
+    _validate_quadrant_summaries({"持续强化": "太短"}, errors)
+    assert any("太短" in e for e in errors)
+
+
+def test_quadrant_summaries_null_per_cat_ok():
+    """候选数=0 时对应 key 可填 null，不报错。"""
+    from src.llm_validate import _validate_quadrant_summaries
+    errors: list = []
+    _validate_quadrant_summaries({"持续强化": None, "强反转": "x" * 45}, errors)
+    assert errors == []
+
+
+def test_quadrant_summaries_valid_passes():
+    """合法 4 象限小结全通过。"""
+    from src.llm_validate import _validate_quadrant_summaries
+    errors: list = []
+    _validate_quadrant_summaries({
+        "持续强化": "持续强化龙头量价配合良好，远离均线但量分位高位，资金未撤未现松动。给综合轮：核心权重稳定主导。",
+        "反包修复": "反包修复整体动能偏弱，缺乏次日承接量能跟随，警惕缩量阴跌进入诱多。给综合轮：高低切尚未启动。",
+        "强反转": "强反转象限黄金 ETF 量爆价跌，**异常** 信号，避险逻辑分化中，做多动能转弱。给综合轮：观望分化。",
+        "连续杀跌": "连续杀跌恐慌情绪释放充分，但量能未现地量背离，反弹动能仍需等待酝酿。给综合轮：守为主。",
+    }, errors)
+    assert errors == []
+
+
+def test_group_qualitative_null_ok():
+    from src.llm_validate import _validate_group_qualitative
+    errors: list = []
+    _validate_group_qualitative(None, errors)
+    assert errors == []
+
+
+def test_group_qualitative_unknown_key_rejected():
+    from src.llm_validate import _validate_group_qualitative
+    errors: list = []
+    _validate_group_qualitative({"middle_group": "x" * 30}, errors)
+    assert any("不在白名单" in e for e in errors)
+
+
+def test_group_qualitative_too_short_rejected():
+    from src.llm_validate import _validate_group_qualitative
+    errors: list = []
+    _validate_group_qualitative({"bull_group": "短"}, errors)
+    assert any("太短" in e for e in errors)
+
+
+def test_group_qualitative_valid_passes():
+    from src.llm_validate import _validate_group_qualitative
+    errors: list = []
+    _validate_group_qualitative({
+        "bull_group": "多头组整体偏稳，龙头未松动，资金继续做多权重。",
+        "bear_group": "空头组防守压力上升，避险品种异动需关注。",
+    }, errors)
+    assert errors == []
+
+
 # ---------- A 股 ----------
 
 VALID_YANGJIA = {

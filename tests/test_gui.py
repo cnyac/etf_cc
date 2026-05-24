@@ -92,6 +92,63 @@ def test_api_gen_prompt_unknown_label(client):
     assert r.status_code == 404
 
 
+# --- E.3：GUI 分段模式 ---
+
+def test_index_has_segmented_toggle(client):
+    """主页 ② 生成 Prompt tab 含分段模式 checkbox + 3 个 PART 复制按钮。"""
+    r = client.get("/")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert 'id="gp-segmented"' in html
+    assert 'copySegment(1)' in html and 'copySegment(2)' in html and 'copySegment(3)' in html
+    assert 'id="gp-output-1"' in html
+    assert 'id="gp-output-2"' in html
+    assert 'id="gp-output-3"' in html
+
+
+def test_api_gen_prompt_segmented_unknown_label(client):
+    """分段模式同样要校验 label 存在。"""
+    r = client.post("/api/gen_prompt",
+                    json={"market": "A", "label": "9999-99-99-收", "segmented": True})
+    assert r.status_code == 404
+
+
+def test_api_gen_prompt_backward_compat(client):
+    """不传 segmented → 旧返回结构 {prompt, length}（用真实窗口里任一 label）。"""
+    # 用真实 A 窗口的最新 label（如果有）
+    from src import window as win
+    data = win.load("A")
+    if not data["sessions"]:
+        pytest.skip("窗口为空，跳过")
+    label = data["sessions"][-1]["label"]
+    r = client.post("/api/gen_prompt", json={"market": "A", "label": label})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert "prompt" in j and "length" in j
+    assert "prompts" not in j  # 旧结构没有这个
+    assert isinstance(j["prompt"], str)
+
+
+def test_api_gen_prompt_segmented_returns_three(client):
+    """传 segmented=true → 返回 {prompts:[3], lengths:[3], segmented:true}。"""
+    from src import window as win
+    data = win.load("A")
+    if not data["sessions"]:
+        pytest.skip("窗口为空，跳过")
+    label = data["sessions"][-1]["label"]
+    r = client.post("/api/gen_prompt",
+                    json={"market": "A", "label": label, "segmented": True})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j.get("segmented") is True
+    assert isinstance(j["prompts"], list) and len(j["prompts"]) == 3
+    assert isinstance(j["lengths"], list) and len(j["lengths"]) == 3
+    assert all(isinstance(p, str) and p for p in j["prompts"])
+    assert "PART 1/3" in j["prompts"][0]
+    assert "PART 2/3" in j["prompts"][1]
+    assert "PART 3/3" in j["prompts"][2]
+
+
 def test_api_fill_narrative_bad_json(client):
     r = client.post("/api/fill_narrative", json={
         "market": "A", "label": "9999-99-99-收",

@@ -102,6 +102,279 @@ def test_render_new_high_low_marks(tmp_env):
     assert "▼" in html  # new_low
 
 
+# --- E.1：新因子 tooltip（含 5 个新因子时出现 title=）---
+
+def _mk_session_with_new_factors():
+    """构造一个含全部 5 个新因子的 session（用于验 tooltip）。"""
+    s = _mk_session()
+    s["tickers"][0]["factors"].update({
+        "rs_vs_benchmark": 0.015,
+        "vol_std_20": 0.0162,
+        "er60": 0.85,
+        "mdd60": 0.125,
+        "slope_seg": [0.08, -0.03, 0.04],
+    })
+    # 第 2 只品种特意只填部分新因子（null 用例）
+    s["tickers"][1]["factors"].update({
+        "rs_vs_benchmark": None,
+        "vol_std_20": 0.024,
+        "er60": None,
+        "mdd60": 0.18,
+        "slope_seg": None,
+    })
+    return s
+
+
+def test_render_new_factor_tooltips_appear_when_present(tmp_env):
+    """5 个新因子有值时，对应列出现 title= 属性。"""
+    win.append_session("A", _mk_session_with_new_factors())
+    fp = rh.render("A", "2026-05-20-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    assert "相对基准强度" in html, "rs_vs_benchmark tooltip 应在差值列"
+    assert "20日收益率标准差" in html, "vol_std_20 tooltip 应在量能列"
+    assert "60日路径效率" in html, "er60 tooltip 应在价位列"
+    assert "60日最大回撤" in html, "mdd60 tooltip 应在价位列"
+    assert "分段斜率" in html, "slope_seg tooltip 应在价位列"
+
+
+def test_render_no_title_when_all_new_factors_null(tmp_env):
+    """新因子全 null → 不出现对应 tooltip 文本（不污染视觉）。"""
+    # _mk_session 默认不带新因子键 = 全 null
+    win.append_session("A", _mk_session())
+    fp = rh.render("A", "2026-05-20-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    assert "相对基准强度" not in html
+    assert "20日收益率标准差" not in html
+    assert "60日路径效率" not in html
+    assert "60日最大回撤" not in html
+    assert "分段斜率" not in html
+
+
+# --- E.2：象限小结 + 组整体定性 渲染 ---
+
+def _mk_session_with_summaries():
+    """构造一个含 quadrant_summaries + group_qualitative 的 session。
+
+    特意补齐 4 个象限的 ticker（否则缺数据的象限无表格、其小结也不渲染）。
+    """
+    s = _mk_session()
+    # 补 反包修复 + 连续杀跌 各 1 只
+    s["tickers"].append({
+        "code": "SH515000", "name": "科技ETF",
+        "today_pct": 0.012, "yest_pct": -0.008, "pct_diff": 0.020,
+        "category": "反包修复", "feature": "修复龙1", "compliance": "完全符合",
+        "annotation": None,
+        "new_high_20d": False, "new_low_20d": False,
+        "factors": {
+            "price_pctile_60": 55, "vol_ratio_20": 1.1, "vol_pctile_20": 60,
+            "ma_alignment": "震荡", "pct_normalized": 1.5,
+            "new_high_20d": False, "new_low_20d": False,
+        },
+    })
+    s["tickers"].append({
+        "code": "SH512170", "name": "医疗ETF",
+        "today_pct": -0.022, "yest_pct": -0.010, "pct_diff": -0.012,
+        "category": "连续杀跌", "feature": "", "compliance": "完全符合",
+        "annotation": None,
+        "new_high_20d": False, "new_low_20d": False,
+        "factors": {
+            "price_pctile_60": 8, "vol_ratio_20": 0.7, "vol_pctile_20": 25,
+            "ma_alignment": "空头", "pct_normalized": -2.1,
+            "new_high_20d": False, "new_low_20d": False,
+        },
+    })
+    s["narrative"] = {
+        "is_skeleton": False,
+        "session_summary": "测试摘要 包含若干象限分析",
+        "quadrant_summaries": {
+            "持续强化": "持续强化象限龙头 SH510050 上证50ETF 量价配合良好，分位 P75，远离均线但未现 **异常** 放量。给综合轮：核心权重持续主导。",
+            "反包修复": "反包修复象限内未见龙头候选，整体反包动能偏弱，需警惕昨日抢反弹品种次日缩量阴跌。给综合轮：高低切尚未启动。",
+            "强反转": "强反转象限黄金 ETF SH518880 量能爆掉但价格新低，典型 **异常** 信号，做多动能转弱。给综合轮：警惕避险资产分化。",
+        },
+        "group_qualitative": {
+            "bull_group": "多头组整体偏稳，龙头未见松动，资金继续做多权重。",
+            "bear_group": "空头组防守压力上升，避险品种异动需要关注。",
+        },
+    }
+    return s
+
+
+def test_render_quadrant_summaries_appear(tmp_env):
+    """quadrant_summaries 各 cat 内容必须出现在 HTML 里，并标注【XX · 小结】。"""
+    win.append_session("A", _mk_session_with_summaries())
+    fp = rh.render("A", "2026-05-20-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    assert "持续强化 · 小结" in html
+    assert "反包修复 · 小结" in html
+    assert "强反转 · 小结" in html
+    assert "SH510050 上证50ETF" in html  # 持续强化小结内容片段
+    assert "高低切尚未启动" in html        # 反包修复小结片段
+
+
+def test_render_group_qualitative_positioning(tmp_env):
+    """方案 (ii)：多头组定性在反包修复表后、空头组定性在连续杀跌表后。
+
+    用 HTML 字符串位置验：bull_group 出现位置 < 强反转表 < bear_group 出现位置。
+    """
+    win.append_session("A", _mk_session_with_summaries())
+    fp = rh.render("A", "2026-05-20-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    assert "多头组整体定性" in html
+    assert "空头组整体定性" in html
+    bull_pos = html.index("多头组整体定性")
+    bear_pos = html.index("空头组整体定性")
+    fanzhuan_pos = html.index("强反转 · 小结")  # 强反转表+小结的位置
+    assert bull_pos < fanzhuan_pos < bear_pos, (
+        f"组定性位置错乱：bull={bull_pos} fanzhuan={fanzhuan_pos} bear={bear_pos}"
+    )
+
+
+def test_render_no_summary_section_when_narrative_null(tmp_env):
+    """narrative=None 时 §3 不出现小结 div 实例（CSS 类定义在 <style> 里仍在，
+    但不应有 <div class="quadrant-summary"> / <div class="group-qualitative"> 实例）。"""
+    s = _mk_session()
+    s["narrative"] = None
+    win.append_session("A", s)
+    fp = rh.render("A", "2026-05-20-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    assert '<div class="quadrant-summary"' not in html
+    assert '<div class="group-qualitative"' not in html
+
+
+def test_render_partial_summaries_no_crash(tmp_env):
+    """只填部分象限/只填一组定性 → 渲染正常，缺失部分不出现。"""
+    s = _mk_session()
+    s["narrative"] = {
+        "is_skeleton": False,
+        "session_summary": "部分填写测试",
+        "quadrant_summaries": {
+            "持续强化": "只有持续强化象限有小结，覆盖龙头与量价共性，给综合轮：风格未变。",
+        },
+        "group_qualitative": {"bull_group": "只填多头组定性测试段落"},
+    }
+    win.append_session("A", s)
+    fp = rh.render("A", "2026-05-20-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    assert "持续强化 · 小结" in html
+    assert "反包修复 · 小结" not in html
+    assert "多头组整体定性" in html
+    assert "空头组整体定性" not in html
+
+
+# --- F.1：批注按行独立显示 + 只有当前时段可编辑 ---
+
+def _mk_session_with_annotation(label: str, code: str, color: str | None, note: str | None,
+                                 trade_date: str | None = None):
+    """构造单时段单 ticker 的 session，专用于多时段批注测试。"""
+    s = _mk_session(label=label)
+    s["trade_date"] = trade_date or label[:10]
+    s["session_time"] = "close"
+    ann = {"color": color, "note": note} if (color or note) else None
+    s["tickers"] = [{
+        "code": code, "name": "测试ETF",
+        "today_pct": 0.01, "yest_pct": 0.005, "pct_diff": 0.005,
+        "category": "持续强化", "feature": "", "compliance": "完全符合",
+        "annotation": ann,
+        "new_high_20d": False, "new_low_20d": False,
+        "factors": {"price_pctile_60": 60, "vol_ratio_20": 1.1, "vol_pctile_20": 55,
+                    "ma_alignment": "多头", "pct_normalized": 0.5,
+                    "new_high_20d": False, "new_low_20d": False},
+    }]
+    return s
+
+
+def _persist_session_with_snapshot(market: str, s: dict):
+    """既写窗口、又写 snapshot 文件——render 的 §3 邻近时段从 snapshots/ 直读，
+    不写 snapshot 的话 _load_neighbor_sessions 找不到历史行，§3 只剩 1 行。"""
+    import json as _json
+    win.append_session(market, s)
+    snap_dir = os.path.join(win.SNAPSHOT_DIR, market.lower())
+    os.makedirs(snap_dir, exist_ok=True)
+    with open(os.path.join(snap_dir, f"{s['label']}.json"), "w", encoding="utf-8") as f:
+        _json.dump(s, f, ensure_ascii=False)
+
+
+def test_render_per_row_annotation_independent(tmp_env):
+    """3 段各写不同批注 → §3 表格里每行显示各自时段的批注。"""
+    # 5/20 黄色 "破位预警"，5/21 无批注，5/22 红色 "止损"
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-20-收", "SH510050", "#FFE4B5", "破位预警", "2026-05-20"))
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-21-收", "SH510050", None, None, "2026-05-21"))
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-22-收", "SH510050", "#FFCCCC", "止损", "2026-05-22"))
+    fp = rh.render("A", "2026-05-22-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    # 三个时段的批注内容都应出现
+    assert "破位预警" in html, "5/20 批注应显示在该行"
+    assert "止损" in html, "5/22 批注应显示在该行"
+    # 5/21 行无批注 → 不该出现误置的内容（用占位符 "—" 显示，下面会单独验）
+    # 三个颜色都应出现在 --row-bg 里（按行独立染色）
+    assert "#FFE4B5" in html and "#FFCCCC" in html
+
+
+def test_render_current_row_editable_only(tmp_env):
+    """只有当前时段（最末行）的批注 cell 含 data-anno-cell-for；历史行不含。"""
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-20-收", "SH510050", "#FFE4B5", "破位预警", "2026-05-20"))
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-22-收", "SH510050", None, None, "2026-05-22"))
+    fp = rh.render("A", "2026-05-22-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    # 全文 data-anno-cell-for 应仅出现 1 次（仅当前时段编辑入口）
+    assert html.count('data-anno-cell-for="SH510050"') == 1, (
+        f"data-anno-cell-for 应只出现 1 次（当前时段），实际 "
+        f"{html.count('data-anno-cell-for=\"SH510050\"')} 次"
+    )
+    # 历史行的 cell 用 annotation-cell-historical class
+    assert "annotation-cell-historical" in html
+
+
+def test_render_no_more_rowspan_on_annotation(tmp_env):
+    """批注 cell 不再用 rowspan。"""
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-20-收", "SH510050", "#FFE4B5", "笔记 A", "2026-05-20"))
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-22-收", "SH510050", "#CCFFCC", "笔记 B", "2026-05-22"))
+    fp = rh.render("A", "2026-05-22-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    # 旧版的 rowspan annotation cell 标志应消失
+    assert 'rowspan="2" class="annotation-cell"' not in html
+    assert 'rowspan="3" class="annotation-cell"' not in html
+
+
+def test_render_per_row_background_via_css_var(tmp_env):
+    """按行染色用 --row-bg CSS 变量，不是 background-color 直接绑 tr。"""
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-22-收", "SH510050", "#FFE4B5", "测试笔记", "2026-05-22"))
+    fp = rh.render("A", "2026-05-22-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    # 应出现 --row-bg:<color>; 而不是直接 background-color
+    assert "--row-bg:#FFE4B5" in html
+    # 校验 CSS 规则存在（只染非 rowspan 列）
+    assert "tr[style*=\"--row-bg\"] > td:not([rowspan])" in html
+
+
+def test_render_group_name_cells_have_rowspan(tmp_env):
+    """代码/名称列保留 rowspan（不参与按行染色，作为视觉头部）。"""
+    _persist_session_with_snapshot("A", _mk_session_with_annotation(
+        "2026-05-22-收", "SH510050", "#FFE4B5", "笔记", "2026-05-22"))
+    fp = rh.render("A", "2026-05-22-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    # group-name-cell 类用于代码/名称 rowspan 单元格
+    assert "group-name-cell" in html
+
+
+def test_render_partial_new_factors_tooltip(tmp_env):
+    """部分新因子有值、部分 null → 只显示有值的，不报错。"""
+    win.append_session("A", _mk_session_with_new_factors())
+    fp = rh.render("A", "2026-05-20-收")
+    html = open(fp, "r", encoding="utf-8").read()
+    # 第二只 ticker rs_vs_benchmark=None, mdd60=有值, slope_seg=None
+    # 整页应能含 mdd60 tooltip（来自任一品种），不应崩
+    assert "60日最大回撤" in html
+
+
 def test_render_annotation_payload_embedded(tmp_env):
     win.append_session("A", _mk_session())
     fp = rh.render("A", "2026-05-20-收")

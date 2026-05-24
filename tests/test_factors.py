@@ -13,6 +13,7 @@ import pytest
 from src.factors import (
     price_pctile, vol_ratio_20, vol_pctile_20, ma_alignment,
     pct_normalized, new_high_20d, new_low_20d, ma150,
+    vol_std_20, rs_vs_benchmark, er60, mdd60, slope_seg,
     compute_factors,
 )
 
@@ -235,3 +236,107 @@ def test_compute_factors_insufficient_returns_nulls():
     assert r["ma_alignment"] is None
     assert r["new_high_20d"] is None
     assert r["pct_normalized"] is None
+    assert r["vol_std_20"] is None
+    assert r["er60"] is None
+    assert r["mdd60"] is None
+    assert r["slope_seg"] is None
+
+
+# --- 增量 A：vol_std_20 / rs_vs_benchmark ---
+
+def test_vol_std_20_insufficient():
+    assert vol_std_20(pd.Series([10.0] * 20)) is None  # 只能产生 19 returns
+
+
+def test_vol_std_20_basic():
+    # 21 个 close，固定每日 +1% → 20 个相同 returns，std=0
+    closes = pd.Series([100.0 * (1.01 ** i) for i in range(21)])
+    v = vol_std_20(closes)
+    assert v == pytest.approx(0.0, abs=1e-6)
+
+
+def test_vol_std_20_nonzero():
+    # 21 个 close，交替 +5% / -5% → std 显著 > 0
+    closes = [100.0]
+    for i in range(20):
+        closes.append(closes[-1] * (1.05 if i % 2 == 0 else 0.95))
+    v = vol_std_20(pd.Series(closes))
+    assert v is not None and v > 0.04
+
+
+def test_rs_vs_benchmark_basic():
+    assert rs_vs_benchmark(0.05, 0.02) == pytest.approx(0.03, abs=1e-6)
+    assert rs_vs_benchmark(0.02, 0.02) == 0.0  # 基准自身
+
+
+def test_rs_vs_benchmark_nulls():
+    assert rs_vs_benchmark(None, 0.02) is None
+    assert rs_vs_benchmark(0.05, None) is None
+
+
+def test_compute_factors_rs_pass_through():
+    df = _mk_ohlcv(30, market="A")
+    r = compute_factors(df, market="A", session_time="close", benchmark_today_pct=0.0)
+    assert r["rs_vs_benchmark"] == pytest.approx(r["today_pct"], abs=1e-6)
+    r2 = compute_factors(df, market="A", session_time="close")  # 未传基准 → None
+    assert r2["rs_vs_benchmark"] is None
+
+
+# --- 增量 B：er60 / mdd60 / slope_seg ---
+
+def test_er60_insufficient():
+    assert er60(pd.Series([10.0] * 30)) is None  # 只能产生 29 diffs
+
+
+def test_er60_smooth_close_to_one():
+    # 61 个 close，单调线性增长 → er ≈ 1.0
+    closes = pd.Series([100.0 + i for i in range(61)])
+    e = er60(closes)
+    assert e == pytest.approx(1.0, abs=1e-4)
+
+
+def test_er60_v_shape_low():
+    # V 型：先跌 30 段再涨 30 段，最终回到起点 → numerator=0, er=0
+    closes = pd.Series([100.0 - i for i in range(31)] + [70.0 + i for i in range(1, 31)])
+    e = er60(closes)
+    assert e == pytest.approx(0.0, abs=1e-4)
+
+
+def test_er60_smooth_higher_than_v_shape():
+    smooth = pd.Series([100.0 + i for i in range(61)])
+    # V 型回拉到起点之上：从 100 跌到 70 再到 110，终点比起点高 10
+    v = pd.Series([100.0 - i for i in range(31)] + [70.0 + (i * 40 / 30) for i in range(1, 31)])
+    assert er60(smooth) > er60(v) + 0.5
+
+
+def test_mdd60_insufficient():
+    assert mdd60(pd.Series([10.0] * 29)) is None
+
+
+def test_mdd60_known():
+    # 已知序列：peak=120, trough=90 之后 → mdd=(120-90)/120=0.25
+    closes = pd.Series([100.0] * 10 + [120.0] + [90.0] + [95.0] * 18)  # 30 个
+    m = mdd60(closes)
+    assert m == pytest.approx(0.25, abs=1e-4)
+
+
+def test_mdd60_monotonic_zero():
+    closes = pd.Series([100.0 + i for i in range(60)])
+    assert mdd60(closes) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_slope_seg_insufficient():
+    assert slope_seg(pd.Series([10.0] * 59)) is None
+
+
+def test_slope_seg_orientation_far_to_near():
+    # 远段平、中段涨、近段跌 → [≈0, +大, -大]
+    seg_far = [100.0] * 20
+    seg_mid = [100.0 + i * 1.0 for i in range(20)]   # 100 → 119
+    seg_near = [120.0 - i * 1.0 for i in range(20)]  # 120 → 101
+    closes = pd.Series(seg_far + seg_mid + seg_near)
+    s = slope_seg(closes)
+    assert s is not None and len(s) == 3
+    assert s[0] == pytest.approx(0.0, abs=1e-4)
+    assert s[1] > 0.15
+    assert s[2] < -0.10

@@ -158,6 +158,82 @@ def new_low_20d(closes_incl_today: pd.Series) -> Optional[bool]:
     return bool(recent.iloc[-1] <= recent.min())
 
 
+def vol_std_20(closes: pd.Series) -> Optional[float]:
+    """20 日每日收益率（含当日）的样本标准差。
+
+    需要 ≥21 个 close（产生 20 个 returns），不足返 None。返回小数（如 0.0152）。
+    """
+    if len(closes) < 21:
+        return None
+    recent = closes.iloc[-21:].astype(float)
+    returns = recent.pct_change().dropna()
+    if len(returns) < 20:
+        return None
+    return round(float(returns.std(ddof=1)), 4)
+
+
+def rs_vs_benchmark(today_pct: Optional[float],
+                    benchmark_today_pct: Optional[float]) -> Optional[float]:
+    """相对强度：本品种 today_pct − 基准 today_pct。
+
+    任一缺失返 None。基准自身调用时 today_pct == benchmark_today_pct → 0.0。
+    """
+    if today_pct is None or benchmark_today_pct is None:
+        return None
+    return round(today_pct - benchmark_today_pct, 6)
+
+
+def er60(closes: pd.Series) -> Optional[float]:
+    """路径效率 = |close[-1] - close[-61]| / Σ|daily_diff|（60 个 diff，含当日）。
+
+    范围 0~1，1=平滑直线，越低越曲折。需要 ≥31 个 close（30 个 diff），不足返 None。
+    分母为 0 时返 None。
+    """
+    if len(closes) < 31:
+        return None
+    window = closes.iloc[-61:].astype(float) if len(closes) >= 61 else closes.astype(float)
+    diffs = window.diff().dropna()
+    if len(diffs) < 30:
+        return None
+    denom = float(diffs.abs().sum())
+    if denom <= 0:
+        return None
+    numer = abs(float(window.iloc[-1]) - float(window.iloc[0]))
+    return round(numer / denom, 4)
+
+
+def mdd60(closes: pd.Series) -> Optional[float]:
+    """60 日窗口（含当日）内最大回撤，正数小数（0.15 = 回撤 15%）。
+
+    需要 ≥30 个 close，不足返 None。算法：cummax 减当前价的最大相对值。
+    """
+    if len(closes) < 30:
+        return None
+    window = closes.iloc[-60:].astype(float) if len(closes) >= 60 else closes.astype(float)
+    cmax = window.cummax()
+    dd = (cmax - window) / cmax
+    return round(float(dd.max()), 4)
+
+
+def slope_seg(closes: pd.Series) -> Optional[list]:
+    """60 日切 3 段（远/中/近，各 20 日），每段输出 (close_end / close_start − 1)。
+
+    返回 [s_far, s_mid, s_near]，远→近。需要 ≥60 个 close，不足返 None。
+    """
+    if len(closes) < 60:
+        return None
+    window = closes.iloc[-60:].astype(float).reset_index(drop=True)
+    result = []
+    for i in range(3):
+        seg = window.iloc[i * 20:(i + 1) * 20]
+        start = float(seg.iloc[0])
+        end = float(seg.iloc[-1])
+        if start <= 0:
+            return None
+        result.append(round(end / start - 1, 4))
+    return result
+
+
 def ma150(closes: pd.Series) -> tuple[Optional[float], Optional[Ma150Relation]]:
     """30 周均线（150 日 SMA）。返回 (距 MA150 偏离百分比, 关系)。
 
@@ -182,7 +258,8 @@ def ma150(closes: pd.Series) -> tuple[Optional[float], Optional[Ma150Relation]]:
 
 
 def compute_factors(ohlcv_df: pd.DataFrame, market: Literal["A", "US"],
-                    session_time: Literal["noon", "close"] = "close") -> dict:
+                    session_time: Literal["noon", "close"] = "close",
+                    benchmark_today_pct: Optional[float] = None) -> dict:
     """单一入口：给一只标的的 OHLCV 历史（含今日）算出全部因子。
 
     Args:
@@ -231,6 +308,11 @@ def compute_factors(ohlcv_df: pd.DataFrame, market: Literal["A", "US"],
     pn = pct_normalized(today_pct, highs, lows, closes) if today_pct is not None else None
     nh = new_high_20d(closes)
     nl = new_low_20d(closes)
+    vstd20 = vol_std_20(closes)
+    rs = rs_vs_benchmark(today_pct, benchmark_today_pct)
+    er = er60(closes)
+    mdd = mdd60(closes)
+    slp = slope_seg(closes)
 
     is_outlier = (pn is not None) and (abs(pn) > 2)
 
@@ -248,6 +330,11 @@ def compute_factors(ohlcv_df: pd.DataFrame, market: Literal["A", "US"],
         "pct_normalized": pn,
         "new_high_20d": nh,
         "new_low_20d": nl,
+        "vol_std_20": vstd20,
+        "rs_vs_benchmark": rs,
+        "er60": er,
+        "mdd60": mdd,
+        "slope_seg": slp,
         "is_outlier": is_outlier,
     }
 

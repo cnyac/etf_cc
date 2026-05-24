@@ -219,15 +219,49 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
       <button class="btn btn-outline btn-sm" onclick="reloadLabels('gp')">↻</button>
     </div>
     <div class="field-row">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="gp-segmented" onchange="onSegmentedToggle()">
+        <span>分段模式（产 3 段 prompt，同对话依次粘贴）</span>
+      </label>
+    </div>
+    <div class="field-row">
       <button class="btn btn-primary" onclick="genPrompt()">✎ 生成</button>
-      <button class="btn btn-outline" onclick="copyPrompt()">📋 复制 prompt</button>
+      <button class="btn btn-outline" id="gp-copy-single" onclick="copyPrompt()">📋 复制 prompt</button>
       <span id="gp-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
     </div>
   </div>
 
-  <div class="card">
+  <!-- 单轮模式输出 -->
+  <div class="card" id="gp-single-card">
     <h3>Prompt 内容</h3>
     <textarea id="gp-output" class="code-area" style="min-height:400px" placeholder="点'生成'后显示在这里" readonly></textarea>
+  </div>
+
+  <!-- 分段模式输出（3 段独立框 + 各自复制按钮） -->
+  <div class="card" id="gp-segmented-card" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0">PART 1 / 3 — 多头组（持续强化 + 反包修复）</h3>
+      <button class="btn btn-outline btn-sm" onclick="copySegment(1)">
+        📋 复制 PART 1 <span id="gp-len-1" class="muted" style="margin-left:6px"></span>
+      </button>
+    </div>
+    <textarea id="gp-output-1" class="code-area" style="min-height:260px" placeholder="点'生成'后显示在这里" readonly></textarea>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+      <h3 style="margin:0">PART 2 / 3 — 空头组（强反转 + 连续杀跌）</h3>
+      <button class="btn btn-outline btn-sm" onclick="copySegment(2)">
+        📋 复制 PART 2 <span id="gp-len-2" class="muted" style="margin-left:6px"></span>
+      </button>
+    </div>
+    <textarea id="gp-output-2" class="code-area" style="min-height:260px" placeholder="" readonly></textarea>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+      <h3 style="margin:0">PART 3 / 3 — 综合 + 最终 JSON</h3>
+      <button class="btn btn-outline btn-sm" onclick="copySegment(3)">
+        📋 复制 PART 3 <span id="gp-len-3" class="muted" style="margin-left:6px"></span>
+      </button>
+    </div>
+    <textarea id="gp-output-3" class="code-area" style="min-height:260px" placeholder="" readonly></textarea>
   </div>
 </section>
 
@@ -662,15 +696,39 @@ async function reloadLabels(prefix) {
 }
 
 // ============ Tab 2: 生成 Prompt ============
+function onSegmentedToggle() {
+  const segmented = $("gp-segmented").checked;
+  $("gp-single-card").style.display = segmented ? "none" : "";
+  $("gp-segmented-card").style.display = segmented ? "" : "none";
+  $("gp-copy-single").style.display = segmented ? "none" : "";
+  // 切换模式时清空旧内容，避免视觉混淆
+  $("gp-output").value = "";
+  for (let i = 1; i <= 3; i++) {
+    $("gp-output-" + i).value = "";
+    $("gp-len-" + i).textContent = "";
+  }
+  $("gp-status").textContent = "";
+}
+
 async function genPrompt() {
   const market = getMarket("gp-markets");
   const label = $("gp-label").value;
+  const segmented = $("gp-segmented").checked;
   if (!label) { toast("无可选 label", "warning"); return; }
   $("gp-status").innerHTML = '<span class="spinner"></span> 生成中…';
   try {
-    const r = await api("/api/gen_prompt", {method:"POST", body:{market, label}});
-    $("gp-output").value = r.prompt;
-    $("gp-status").textContent = `✓ 已生成 (${r.length} 字符)`;
+    const r = await api("/api/gen_prompt", {method:"POST", body:{market, label, segmented}});
+    if (segmented) {
+      for (let i = 1; i <= 3; i++) {
+        $("gp-output-" + i).value = r.prompts[i - 1];
+        $("gp-len-" + i).textContent = `(${r.lengths[i - 1]} 字符)`;
+      }
+      const total = r.lengths.reduce((a, b) => a + b, 0);
+      $("gp-status").textContent = `✓ 已生成 3 段 (总 ${total} 字符)`;
+    } else {
+      $("gp-output").value = r.prompt;
+      $("gp-status").textContent = `✓ 已生成 (${r.length} 字符)`;
+    }
   } catch (e) {
     toast(e.message, "error");
     $("gp-status").textContent = "";
@@ -680,6 +738,12 @@ function copyPrompt() {
   const t = $("gp-output");
   t.select(); document.execCommand("copy");
   toast("已复制 prompt", "success", 1500);
+}
+function copySegment(n) {
+  const t = $("gp-output-" + n);
+  if (!t.value) { toast(`PART ${n} 为空，请先生成`, "warning"); return; }
+  t.select(); document.execCommand("copy");
+  toast(`已复制 PART ${n}`, "success", 1500);
 }
 
 // ============ Tab 3: 填回 Narrative ============

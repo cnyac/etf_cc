@@ -141,16 +141,25 @@ def create_app() -> Flask:
         body = request.get_json(silent=True) or {}
         market = body.get("market")
         label = body.get("label")
+        segmented = bool(body.get("segmented", False))
         if market not in ("A", "US") or not label:
             return jsonify({"error": "需 market(A/US) + label"}), 400
 
-        from src.llm_prompt import build_prompt
+        from src.llm_prompt import build_prompt, build_segmented_prompts
         data = win.load(market)
         target = next((s for s in data["sessions"] if s["label"] == label), None)
         if target is None:
             return jsonify({"error": f"窗口里找不到 {market}/{label}"}), 404
         history = [s for s in data["sessions"] if s["label"] != label]
         try:
+            if segmented:
+                parts = build_segmented_prompts(market, target, history)
+                # 向后兼容：未传 segmented=true 时仍是旧返回结构
+                return jsonify({
+                    "prompts": parts,
+                    "lengths": [len(p) for p in parts],
+                    "segmented": True,
+                })
             prompt = build_prompt(market, target, history)
         except Exception as e:
             return jsonify({"error": f"build_prompt 失败: {type(e).__name__}: {e}"}), 500

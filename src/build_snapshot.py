@@ -166,6 +166,29 @@ def build(market: Literal["A", "US"], label: str,
     if session_time == "noon":
         realtime_snaps = api.get_a_etf_realtime(codes)
 
+    # 基准 today_pct（rs_vs_benchmark 用）：A=中证1000ETF SZ159845，US=SPY。
+    # 缺失则该因子全池返 None。
+    benchmark_code = "SZ159845" if market == "A" else "SPY"
+    benchmark_today_pct: float | None = None
+    try:
+        b_sub = df_all[df_all["code"] == benchmark_code].sort_values("date").copy()
+        if session_time == "noon":
+            snap = realtime_snaps.get(benchmark_code)
+            if snap is not None:
+                snap_date = pd.Timestamp(snap["日期"])
+                b_sub = b_sub[b_sub["date"] < snap_date]
+                b_sub = pd.concat([b_sub, pd.DataFrame([{
+                    "date": snap_date, "code": benchmark_code,
+                    "close": snap["收盘"],
+                }])], ignore_index=True)
+        b_sub = b_sub[b_sub["date"] <= end_ts]
+        if len(b_sub) >= 2:
+            c = b_sub["close"].astype(float).to_numpy()
+            if c[-2] > 0:
+                benchmark_today_pct = float(c[-1] / c[-2] - 1)
+    except Exception:
+        benchmark_today_pct = None
+
     # 每只 ticker 单独算 factors（单只挂了不影响整批）
     per_ticker = []
     for code in codes:
@@ -200,7 +223,8 @@ def build(market: Literal["A", "US"], label: str,
             yest_amount = float((sub["amount"] if "amount" in sub.columns and market == "A"
                                  else sub["volume"]).iloc[-2])
 
-            f = compute_factors(sub, market=market, session_time=session_time)
+            f = compute_factors(sub, market=market, session_time=session_time,
+                                benchmark_today_pct=benchmark_today_pct)
             per_ticker.append({
                 "code": code,
                 "today_pct": f["today_pct"],

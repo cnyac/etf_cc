@@ -67,8 +67,12 @@ def test_build_prompt_contains_sections_a():
     assert "fengliu_contrarian_check" in p
     # 含短键映射说明
     assert "短键映射" in p
-    # 含历史段
-    assert "[骨架]" in p  # 历史 backfill 标记
+    # 含历史段（三级记忆：远级 header 含骨架说明，历史 label 出现在 prompt 里）
+    assert "2026-05-19-收" in p  # 历史 label 出现在远级
+    assert "骨架" in p           # 远级 header 注明骨架说明
+    # E.2：新字段 schema 说明出现在 prompt 里
+    assert "quadrant_summaries" in p
+    assert "group_qualitative" in p
     # 含当前 panel
     assert "up_count" in p
     # 含 schema enum 白名单
