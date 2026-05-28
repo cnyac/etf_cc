@@ -16,10 +16,11 @@
   --font-display:'Geist','-apple-system','PingFang SC','Microsoft YaHei',sans-serif;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scrollbar-gutter:stable;overflow-y:scroll}
 body{font-family:var(--font-sans);background:var(--background);color:var(--foreground);min-height:100vh;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;letter-spacing:-0.005em}
 #dot-field-bg{position:fixed;inset:0;z-index:0;pointer-events:none}
 #dot-field-bg canvas{pointer-events:none}
-body>nav,body>main,body>#toast-container{position:relative;z-index:1}
+body>nav,body>main{position:relative;z-index:1}
 h1,h2,h3,h4,h5,h6{font-family:var(--font-display);letter-spacing:-0.02em;line-height:1.2}
 .font-num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .font-code{font-family:var(--font-mono)}
@@ -176,17 +177,25 @@ table.data-table tr:hover td{background:var(--surface-container-low)}
 /* Toast */
 #toast-container{position:fixed;top:80px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px;max-width:420px}
 .toast{padding:10px 16px;border-radius:8px;font-size:14px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:toastIn .25s ease;cursor:default}
-.toast.success{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
-.toast.error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
-.toast.info{background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe}
-.toast.warning{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+/* 用户色盲禁区：success 不用绿，统一暗调，仅左侧色条点缀 */
+.toast{border:1px solid var(--border)!important;background:var(--card)!important;color:var(--foreground)!important;border-left:3px solid var(--muted-foreground)!important}
+.toast.success{border-left-color:var(--foreground)!important}
+.toast.error{border-left-color:var(--destructive)!important}
+.toast.info{border-left-color:#60a5fa!important}
+.toast.warning{border-left-color:#f59e0b!important}
 .toast .close{background:none;border:none;cursor:pointer;font-size:16px;opacity:.6;margin-left:auto;color:inherit}
 @keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 
 /* 编辑区 */
 textarea.code-area{font-family:var(--font-mono);font-size:13px;line-height:1.55;width:100%;min-height:200px;padding:12px;resize:vertical}
-.errors-list{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-top:12px;color:#991b1b;font-size:13px}
-.errors-list .err{padding:4px 0;border-bottom:1px dashed #fecaca}
+/* === 内嵌通知条（与 toast 同源）=== */
+.alert{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--muted-foreground);border-radius:var(--radius);padding:12px 14px;font-size:13px;color:var(--foreground);margin-bottom:12px;line-height:1.55}
+.alert-success{border-left-color:var(--foreground)}
+.alert-error{border-left-color:var(--destructive)}
+.alert-info{border-left-color:#60a5fa}
+.alert-warning{border-left-color:#f59e0b}
+.errors-list{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--destructive);border-radius:var(--radius);padding:12px 14px;margin-top:12px;color:var(--foreground);font-size:13px}
+.errors-list .err{padding:4px 0;border-bottom:1px dashed var(--border);color:var(--muted-foreground)}
 .errors-list .err:last-child{border-bottom:none}
 
 /* 系统调参子面板 */
@@ -534,7 +543,7 @@ textarea.auto-grow{field-sizing:content;resize:none;min-height:60px;overflow:hid
   <!-- 子面板 2：阈值 -->
   <div class="subpanel" id="sub-thresholds">
     <div class="card">
-      <div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px">
+      <div class="alert alert-warning">
         ⚠ 阈值改动只影响下次 <code class="font-code">build_snapshot</code>。已存在窗口数据不会重算，跨日比较可能失去可比性。
       </div>
       <table class="data-table" id="th-table">
@@ -956,7 +965,7 @@ async function loadInbox() {
         <td><a href="${it.url}" target="_blank" style="color:var(--primary)">${escapeHtml(it.label)}</a></td>
         <td class="font-num">${it.mtime}</td>
         <td class="font-num">${it.synced_at || "(未同步)"}</td>
-        <td>${it.pending ? '<span style="color:var(--error);font-weight:600">⚠ 待同步</span>' : '<span style="color:#166534">✓ 已同步</span>'}</td>
+        <td>${it.pending ? '<span style="color:var(--error);font-weight:600">⚠ 待同步</span>' : '<span style="color:var(--muted-foreground)">✓ 已同步</span>'}</td>
         <td>${it.pending ? `<button class="btn btn-outline btn-sm" onclick="syncMarketBtn('${m}')">同步</button>` : ""}</td>
       </tr>`).join("");
   } catch (e) { toast(e.message, "error"); }
