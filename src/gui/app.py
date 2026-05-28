@@ -43,6 +43,10 @@ def create_app() -> Flask:
         static_folder=os.path.join(os.path.dirname(__file__), "static"),
         static_url_path="/static",
     )
+    # 开发期：模板/静态文件改完不用重启 Flask
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.jinja_env.auto_reload = True
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
     # ───────────────────────────── 主页 ─────────────────────────────
     @app.route("/")
@@ -436,6 +440,28 @@ def create_app() -> Flask:
                     "size": os.path.getsize(fp),
                 })
         return jsonify({"items": items[:100]})
+
+    # ─────────── livereload：开发期前端文件 mtime 轮询 ───────────
+    _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+    _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+
+    def _watch_mtime() -> float:
+        latest = 0.0
+        for base in (_STATIC_DIR, _TEMPLATES_DIR):
+            for root, _, files in os.walk(base):
+                for fn in files:
+                    if fn.endswith((".html", ".js", ".css", ".jinja", ".j2")):
+                        try:
+                            m = os.path.getmtime(os.path.join(root, fn))
+                            if m > latest:
+                                latest = m
+                        except OSError:
+                            pass
+        return latest
+
+    @app.route("/__reload_check")
+    def reload_check():
+        return jsonify({"mtime": _watch_mtime()})
 
     @app.route("/api/errors/<filename>")
     def api_error_content(filename):

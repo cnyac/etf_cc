@@ -3,60 +3,153 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>etf_cc 控制台</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<title>观潮 · The Tide</title>
+<script src="https://cdn.tailwindcss.com?plugins=container-queries"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=ZCOOL+XiaoWei&family=Ma+Shan+Zheng&family=Cormorant+Garamond:ital,wght@1,400;1,500&display=swap" rel="stylesheet">
 <style>
 @font-face{font-family:'STZhongsong';src:url('/static/fonts/STZHONGS.TTF') format('truetype');font-display:swap}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'STZhongsong','华文中宋','Times New Roman',Times,serif;background:#fcf9f6;color:#1c1c1a;min-height:100vh}
-.font-num{font-family:'Times New Roman',Times,serif}
-.font-code{font-family:'Cascadia Code','Consolas','JetBrains Mono','Courier New',monospace}
 :root{
-  --primary:#8f482f;--primary-container:#ad5f45;--on-primary-container:#fffbff;
-  --surface:#fcf9f6;--surface-container:#f0edeb;--surface-container-low:#f6f3f1;
-  --on-surface:#1c1c1a;--on-surface-variant:#54433e;
-  --outline-variant:#dac1ba;--error:#ba1a1a;
-  --inverse-surface:#31302f;--inverse-on-surface:#f3f0ee;
-  --primary-fixed-dim:#ffb59d;
-  /* etf_cc 报告专用色（仅文本/数字染色用，UI 壳子不用） */
+  --font-sans:'Geist','-apple-system','PingFang SC','Microsoft YaHei','华文中宋',sans-serif;
+  --font-mono:'JetBrains Mono','Cascadia Code','Consolas',monospace;
+  --font-display:'Geist','-apple-system','PingFang SC','Microsoft YaHei',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);background:var(--background);color:var(--foreground);min-height:100vh;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;letter-spacing:-0.005em}
+#dot-field-bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+#dot-field-bg canvas{pointer-events:none}
+body>nav,body>main,body>#toast-container{position:relative;z-index:1}
+h1,h2,h3,h4,h5,h6{font-family:var(--font-display);letter-spacing:-0.02em;line-height:1.2}
+.font-num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.font-code{font-family:var(--font-mono)}
+:root{
+  color-scheme: dark;  /* 让原生控件（checkbox/date/select 等）走暗色 */
+  /* === shadcn/ui Zinc 暗色主题（2026-05-28 引入） === */
+  --background:#09090b;          /* zinc-950 页面底色 */
+  --foreground:#fafafa;          /* zinc-50 主文字 */
+  --card:#18181b;                /* zinc-900 卡片/导航/输入框底 */
+  --card-foreground:#fafafa;
+  --muted:#27272a;               /* zinc-800 次级面板 */
+  --muted-foreground:#a1a1aa;    /* zinc-400 次级文字 */
+  --border:#27272a;              /* 描边 */
+  --input:#27272a;               /* 输入框边 */
+  --ring:#d4d4d8;                /* 焦点环 */
+  --primary:#ef4444;             /* 红 - 与 DotField 同源（替代旧砖红） */
+  --primary-container:#dc2626;
+  --on-primary-container:#fafafa;
+  --primary-hover:#b91c1c;
+  --destructive:#ef4444;
+  --radius:0.5rem;
+  /* 兼容旧变量名（指向新 token，不动现有 class） */
+  --surface:var(--background);
+  --surface-container:var(--card);
+  --surface-container-low:var(--muted);
+  --on-surface:var(--foreground);
+  --on-surface-variant:var(--muted-foreground);
+  --outline-variant:var(--border);
+  --error:var(--destructive);
+  --inverse-surface:#fafafa;
+  --inverse-on-surface:#18181b;
+  --primary-fixed-dim:#fca5a5;
+  /* etf_cc 报告专用色（仅文本/数字染色用，禁区不动） */
   --report-up:#FF0000;--report-down:#00008B;
 }
-.btn{padding:8px 20px;border-radius:6px;border:none;font-size:14px;cursor:pointer;transition:all .2s;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
-.btn-primary{background:var(--primary);color:#fff}
-.btn-primary:hover:not(:disabled){background:#75331c}
-.btn-outline{background:transparent;border:1px solid var(--outline-variant);color:var(--on-surface)}
-.btn-outline:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
-.btn-danger{background:#ef4444;color:#fff}
-.btn-danger:hover:not(:disabled){background:#dc2626}
-.btn-sm{padding:4px 12px;font-size:12px}
-.btn:disabled{opacity:.4;cursor:not-allowed}
-input[type=text],input[type=number],input[type=date],select,textarea{
-  padding:8px 12px;border:1px solid var(--outline-variant);border-radius:6px;
-  font-size:14px;outline:none;font-family:inherit;background:#fff
+/* === shadcn 风格按钮 === */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:8px 16px;height:36px;font-size:13.5px;font-weight:500;font-family:inherit;
+  border:1px solid transparent;border-radius:var(--radius);cursor:pointer;
+  transition:background-color .15s,color .15s,border-color .15s,box-shadow .15s,transform .05s;
+  white-space:nowrap;user-select:none;letter-spacing:-0.005em;
 }
-input:focus,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(143,72,47,.1)}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 2px var(--background),0 0 0 4px var(--ring)}
+.btn:active:not(:disabled){transform:translateY(0.5px)}
+.btn:disabled{opacity:.5;cursor:not-allowed;pointer-events:none}
+/* Cursor 风格主按钮：白底深字药丸；红色保留给 danger */
+.btn-primary{background:var(--foreground);color:var(--background);border-radius:9999px;padding:8px 20px}
+.btn-primary:hover:not(:disabled){background:#d4d4d8}
+.btn-outline{background:transparent;border-color:var(--border);color:var(--foreground);border-radius:9999px;padding:8px 20px}
+.btn-outline:hover:not(:disabled){background:var(--muted);border-color:var(--muted-foreground)}
+.btn-ghost{background:transparent;color:var(--muted-foreground);border-color:transparent}
+.btn-ghost:hover:not(:disabled){background:var(--muted);color:var(--foreground)}
+.btn-danger{background:var(--destructive);color:#fff;border-radius:9999px;padding:8px 20px}
+.btn-danger:hover:not(:disabled){background:#b91c1c}
+.btn-sm{height:28px;padding:4px 14px;font-size:12px}
+/* === shadcn 风格输入框 === */
+input[type=text],input[type=number],input[type=date],input[type=time],select,textarea{
+  padding:6px 12px;height:36px;border:1px solid var(--input);border-radius:var(--radius);
+  font-size:13.5px;outline:none;font-family:inherit;background:transparent;color:var(--foreground);
+  transition:border-color .15s,box-shadow .15s;letter-spacing:-0.005em;
+}
+textarea{height:auto;padding:8px 12px;line-height:1.55}
+input:focus,select:focus,textarea:focus{border-color:var(--ring);box-shadow:0 0 0 3px rgba(239,68,68,.15)}
+input::placeholder,textarea::placeholder{color:var(--muted-foreground);opacity:.6}
+/* === shadcn 风格 checkbox / radio === */
+input[type=checkbox],input[type=radio]{
+  appearance:none;-webkit-appearance:none;-moz-appearance:none;
+  width:16px;height:16px;margin:0;padding:0;
+  border:1px solid var(--input);background:var(--card);
+  cursor:pointer;display:inline-block;vertical-align:middle;position:relative;
+  transition:background .15s,border-color .15s,box-shadow .15s;
+}
+input[type=checkbox]{border-radius:4px}
+input[type=radio]{border-radius:50%}
+input[type=checkbox]:hover,input[type=radio]:hover{border-color:var(--ring)}
+input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(239,68,68,.25)}
+input[type=checkbox]:checked,input[type=radio]:checked{background:var(--primary);border-color:var(--primary)}
+input[type=checkbox]:checked::after{
+  content:"";position:absolute;left:4px;top:1px;width:5px;height:9px;
+  border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);
+}
+input[type=radio]:checked::after{
+  content:"";position:absolute;inset:3px;border-radius:50%;background:#fff;
+}
+/* date / time input：暗色日历图标 */
+input[type=date]::-webkit-calendar-picker-indicator,
+input[type=time]::-webkit-calendar-picker-indicator{
+  filter:invert(0.9);cursor:pointer;opacity:.7;
+}
+input[type=date]::-webkit-calendar-picker-indicator:hover,
+input[type=time]::-webkit-calendar-picker-indicator:hover{opacity:1}
+/* select 三角箭头染色（webkit 默认黑色，暗底看不见） */
+select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+  padding-right:30px;appearance:none;-webkit-appearance:none;
+}
 .spinner{width:16px;height:16px;border:2px solid var(--outline-variant);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.tab-btn{padding:8px 16px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--on-surface-variant);cursor:pointer;font-size:14px;font-family:inherit;transition:all .15s}
-.tab-btn.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
-.tab-btn:hover:not(.active){color:var(--on-surface)}
+/* === shadcn 风格 tabs === */
+.tab-btn{
+  padding:10px 16px;background:transparent;border:none;border-bottom:2px solid transparent;
+  color:var(--muted-foreground);cursor:pointer;font-size:13.5px;font-weight:500;font-family:inherit;
+  transition:color .15s,border-color .15s;letter-spacing:-0.005em;
+}
+.tab-btn.active{color:var(--foreground);border-bottom-color:var(--primary)}
+.tab-btn:hover:not(.active){color:var(--foreground)}
 .panel{display:none}
 .panel.active{display:block}
-.card{background:var(--surface-container);border:1px solid var(--outline-variant);border-radius:12px;padding:24px;margin-bottom:16px}
-.card-low{background:var(--surface-container-low)}
-.card h3{font-size:16px;font-weight:600;margin-bottom:12px;color:var(--on-surface)}
-.card .help{font-size:12px;color:var(--on-surface-variant);margin-bottom:12px}
+/* === Cursor 风格 card：无边无影，仅靠 bg 色差分块 === */
+.card{
+  background:var(--card);border:none;border-radius:calc(var(--radius) + 4px);
+  padding:28px;margin-bottom:16px;box-shadow:none;
+}
+.card-low{background:var(--muted)}
+.card h3{font-size:14px;font-weight:500;margin-bottom:16px;color:var(--foreground);letter-spacing:-0.01em}
+.card .help{font-size:12.5px;color:var(--muted-foreground);margin-bottom:12px;line-height:1.5}
 
 .field-row{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
 .field-row label{font-size:13px;color:var(--on-surface-variant);min-width:80px}
 
-.market-seg{display:inline-flex;gap:2px;background:var(--surface-container-low);border-radius:8px;padding:3px}
-.market-seg button{padding:6px 16px;border:none;border-radius:6px;background:transparent;color:var(--on-surface-variant);cursor:pointer;font-size:13px;font-family:inherit;transition:all .15s}
-.market-seg button.active{background:var(--primary-container);color:var(--on-primary-container);font-weight:600}
+.market-seg{display:inline-flex;gap:2px;background:var(--muted);border:1px solid var(--border);border-radius:var(--radius);padding:3px}
+.market-seg button{padding:6px 14px;border:none;border-radius:calc(var(--radius) - 2px);background:transparent;color:var(--muted-foreground);cursor:pointer;font-size:13px;font-weight:500;font-family:inherit;transition:background .15s,color .15s}
+.market-seg button.active{background:var(--card);color:var(--foreground);box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.market-seg button:hover:not(.active){color:var(--foreground)}
 
 /* 日志视图 — 终端风格 */
-.log-viewer{background:#181715;color:#cbc6bb;border-radius:8px;padding:14px;max-height:360px;overflow-y:auto;font-family:'Cascadia Code','Consolas',monospace;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-all}
+.log-viewer{background:#0a0a0a;color:#d4d4d8;border:1px solid var(--border);border-radius:var(--radius);padding:14px;max-height:360px;overflow-y:auto;font-family:var(--font-mono);font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-all}
 .log-viewer .log-err{color:#ff7e7e}
 .log-viewer .log-warn{color:#7eb3ff}  /* 用户色盲：深蓝替代橙黄 */
 .log-viewer .log-ok{color:#92e09d}    /* OK 也避免纯绿，用稍浅暖绿 */
@@ -68,11 +161,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0
 .statusbar .item .label{color:var(--on-surface-variant)}
 .statusbar .item .val{color:var(--on-surface);font-weight:600}
 .statusbar .item .val.warn{color:var(--error)}
-.statusbar .item .val.code{font-family:'Times New Roman',Times,serif}
+.statusbar .item .val.code{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 
 /* 拖拽区 */
 .drop-zone{border:2px dashed var(--outline-variant);border-radius:12px;padding:48px 24px;text-align:center;color:var(--on-surface-variant);transition:all .2s;background:var(--surface-container-low)}
-.drop-zone.dragover{border-color:var(--primary);background:#fff;color:var(--primary)}
+.drop-zone.dragover{border-color:var(--primary);background:var(--muted);color:var(--primary)}
 
 /* 表格 */
 table.data-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -91,7 +184,7 @@ table.data-table tr:hover td{background:var(--surface-container-low)}
 @keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 
 /* 编辑区 */
-textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13px;line-height:1.5;width:100%;min-height:200px;padding:12px;resize:vertical}
+textarea.code-area{font-family:var(--font-mono);font-size:13px;line-height:1.55;width:100%;min-height:200px;padding:12px;resize:vertical}
 .errors-list{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-top:12px;color:#991b1b;font-size:13px}
 .errors-list .err{padding:4px 0;border-bottom:1px dashed #fecaca}
 .errors-list .err:last-child{border-bottom:none}
@@ -103,35 +196,55 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
 .subpanel{display:none}
 .subpanel.active{display:block}
 
-.zone-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-left:8px}
-.zone-green{background:#dcfce7;color:#166534}
-.zone-yellow{background:#fef3c7;color:#92400e}
-.zone-orange{background:#fed7aa;color:#9a3412}
+/* textarea 内容自适应高度（field-sizing 是新特性，Chromium 123+） */
+textarea.auto-grow{field-sizing:content;resize:none;min-height:60px;overflow:hidden}
+
+/* === 品牌：观潮 / The Tide. === */
+.wordmark-cn{font-family:'ZCOOL XiaoWei','Ma Shan Zheng','楷体_GB2312',serif;letter-spacing:0.08em}
+.tagline-en{font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-weight:400;letter-spacing:0.04em}
+/* nav 顶左小 wordmark */
+.brand-nav{display:flex;flex-direction:column;text-decoration:none;line-height:1.1;transition:opacity .2s}
+.brand-nav:hover{opacity:.7}
+.brand-nav .wordmark-cn{font-size:19px;color:var(--foreground)}
+.brand-nav .tagline-en{font-size:10px;color:var(--muted-foreground);margin-top:3px;letter-spacing:0.08em}
+/* 右下角浮签 */
+#brand-sig{position:fixed;bottom:28px;right:36px;z-index:2;pointer-events:none;text-align:right;user-select:none;opacity:.55;transition:opacity .3s}
+#brand-sig:hover{opacity:.85}
+#brand-sig .wordmark-cn{font-size:44px;color:var(--foreground);line-height:1;display:block}
+#brand-sig .tagline-en{font-size:14px;color:var(--muted-foreground);margin-top:8px;letter-spacing:0.12em;display:block}
 </style>
 </head>
 <body>
 
+<div id="dot-field-bg"></div>
+<div id="brand-sig">
+  <span class="wordmark-cn">观潮</span>
+  <span class="tagline-en">The Tide.</span>
+</div>
 <div id="toast-container"></div>
 
 <!-- TopNav -->
-<nav class="bg-white border-b" style="border-color:var(--outline-variant)">
-  <div class="px-6 h-14 flex items-center justify-between">
-    <div class="flex items-center gap-6">
-      <span class="text-xl font-bold" style="color:var(--primary);font-family:'STZhongsong','华文中宋',serif">etf_cc 控制台</span>
+<nav class="border-b" style="border-color:var(--border);background:rgba(9,9,11,0.72);backdrop-filter:blur(12px)">
+  <div class="px-8 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-10">
+      <a href="/" class="brand-nav">
+        <span class="wordmark-cn">观潮</span>
+        <span class="tagline-en">The Tide.</span>
+      </a>
       <div class="flex gap-1">
-        <button class="tab-btn active" data-tab="data-update">① 数据更新</button>
-        <button class="tab-btn" data-tab="gen-prompt">② 生成 Prompt</button>
-        <button class="tab-btn" data-tab="fill-narrative">③ 填回 Narrative</button>
-        <button class="tab-btn" data-tab="render">④ 渲染报告</button>
-        <button class="tab-btn" data-tab="sync">⑤ 同步批注</button>
-        <button class="tab-btn" data-tab="inbox">⑥ 批注收件</button>
-        <button class="tab-btn" data-tab="pool">⑦ 池配置</button>
-        <button class="tab-btn" data-tab="system">⑧ 系统调参</button>
+        <button class="tab-btn active" data-tab="data-update">数据更新</button>
+        <button class="tab-btn" data-tab="gen-prompt">生成 Prompt</button>
+        <button class="tab-btn" data-tab="fill-narrative">填回 Narrative</button>
+        <button class="tab-btn" data-tab="render">渲染报告</button>
+        <button class="tab-btn" data-tab="sync">同步批注</button>
+        <button class="tab-btn" data-tab="inbox">批注收件</button>
+        <button class="tab-btn" data-tab="pool">池配置</button>
+        <button class="tab-btn" data-tab="system">系统调参</button>
       </div>
     </div>
-    <div class="flex items-center gap-3">
-      <button class="btn btn-outline btn-sm" onclick="refreshStatus()" title="手动刷新状态栏">🔄 刷新</button>
-      <button class="btn btn-outline btn-sm" onclick="toggleLogger()" title="日志/错误面板">📋 日志</button>
+    <div class="flex items-center gap-2">
+      <button class="btn btn-ghost btn-sm" onclick="refreshStatus()" title="手动刷新状态栏">刷新</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleLogger()" title="日志/错误面板">日志</button>
     </div>
   </div>
   <!-- 状态栏 -->
@@ -157,15 +270,11 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
   </div>
 </nav>
 
-<main class="max-w-6xl mx-auto px-6 py-8">
+<main class="max-w-6xl mx-auto px-8 py-12">
 
 <!-- ───────── ① 数据更新 ───────── -->
 <section class="panel active" id="panel-data-update">
-  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">数据更新</h1>
-  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
-    一键调用 <code class="font-code text-xs">update_all</code>：补底层切片 → 扫报告缺口 → 逐 label 跑 build_snapshot → 落汇总日志。
-    只做到 snapshot 落地；narrative 由后续 tab 跑 LLM 填。
-  </p>
+  <h1 class="text-3xl mb-8" style="font-weight:500;letter-spacing:-0.03em">数据更新</h1>
 
   <div class="card">
     <div class="field-row">
@@ -179,31 +288,26 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
     <div class="field-row">
       <label>回看天数</label>
       <input type="number" id="ua-lookback" value="7" min="1" max="60" style="width:80px">
-      <span class="text-xs" style="color:var(--on-surface-variant)">从今日往前找缺口的天数</span>
     </div>
     <div class="field-row">
       <label>跳过补齐</label>
       <input type="checkbox" id="ua-skip">
-      <span class="text-xs" style="color:var(--on-surface-variant)">勾选后跳过 auto-prtsc 底层切片（已在别处补过时用）</span>
     </div>
     <div class="field-row">
-      <button class="btn btn-primary" id="ua-run-btn" onclick="runUpdateAll()">▶ 开始</button>
+      <button class="btn btn-primary" id="ua-run-btn" onclick="runUpdateAll()">开始</button>
       <span id="ua-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
     </div>
   </div>
 
   <div class="card">
     <h3>实时执行日志</h3>
-    <div class="log-viewer" id="ua-log"><span class="log-line" style="color:#666">（等待开始）</span></div>
+    <div class="log-viewer" id="ua-log"></div>
   </div>
 </section>
 
 <!-- ───────── ② 生成 Prompt ───────── -->
 <section class="panel" id="panel-gen-prompt">
-  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">生成 Prompt</h1>
-  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
-    选择市场和已生成 snapshot 的 label，产出完整提示词。复制到 Claude / ChatGPT 跑，拿回 JSON 到 ③ 填回。
-  </p>
+  <h1 class="text-3xl mb-8" style="font-weight:500;letter-spacing:-0.03em">生成 Prompt</h1>
 
   <div class="card">
     <div class="field-row">
@@ -221,7 +325,7 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
     <div class="field-row">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
         <input type="checkbox" id="gp-segmented" onchange="onSegmentedToggle()">
-        <span>分段模式（产 3 段 prompt，同对话依次粘贴）</span>
+        <span>分段模式</span>
       </label>
     </div>
     <div class="field-row">
@@ -234,7 +338,7 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
   <!-- 单轮模式输出 -->
   <div class="card" id="gp-single-card">
     <h3>Prompt 内容</h3>
-    <textarea id="gp-output" class="code-area" style="min-height:400px" placeholder="点'生成'后显示在这里" readonly></textarea>
+    <textarea id="gp-output" class="code-area" style="min-height:400px" placeholder="" readonly></textarea>
   </div>
 
   <!-- 分段模式输出（3 段独立框 + 各自复制按钮） -->
@@ -245,7 +349,7 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
         📋 复制 PART 1 <span id="gp-len-1" class="muted" style="margin-left:6px"></span>
       </button>
     </div>
-    <textarea id="gp-output-1" class="code-area" style="min-height:260px" placeholder="点'生成'后显示在这里" readonly></textarea>
+    <textarea id="gp-output-1" class="code-area" style="min-height:260px" placeholder="" readonly></textarea>
 
     <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
       <h3 style="margin:0">PART 2 / 3 — 空头组（强反转 + 连续杀跌）</h3>
@@ -267,10 +371,7 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
 
 <!-- ───────── ③ 填回 Narrative ───────── -->
 <section class="panel" id="panel-fill-narrative">
-  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">填回 Narrative</h1>
-  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
-    把 LLM 返回的 JSON 粘到下方 → 校验通过即写回窗口；失败列出错误，修后重粘再校验。
-  </p>
+  <h1 class="text-3xl mb-8" style="font-weight:500;letter-spacing:-0.03em">填回 Narrative</h1>
 
   <div class="card">
     <div class="field-row">
@@ -289,9 +390,9 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
 
   <div class="card">
     <h3>Narrative JSON</h3>
-    <textarea id="fn-input" class="code-area" style="min-height:300px" placeholder='粘贴 LLM 返回的 JSON：{"is_skeleton": false, "session_summary": "...", ...}'></textarea>
+    <textarea id="fn-input" class="code-area" style="min-height:300px" placeholder="粘贴 LLM 返回的 JSON"></textarea>
     <div class="field-row mt-3">
-      <button class="btn btn-primary" onclick="fillNarrative()">✓ 校验 + 回填</button>
+      <button class="btn btn-primary" onclick="fillNarrative()">校验 + 回填</button>
       <span id="fn-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
     </div>
     <div id="fn-errors"></div>
@@ -300,10 +401,7 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
 
 <!-- ───────── ④ 渲染报告 ───────── -->
 <section class="panel" id="panel-render">
-  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">渲染报告</h1>
-  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
-    把已填 narrative 的 session 渲染成 HTML（单文件自包含，可直接发给 B）。
-  </p>
+  <h1 class="text-3xl mb-8" style="font-weight:500;letter-spacing:-0.03em">渲染报告</h1>
 
   <div class="card">
     <div class="field-row">
@@ -326,17 +424,14 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
   </div>
 
   <div class="card">
-    <h3>预览（iframe；批注交互请在'新窗口'里做）</h3>
-    <iframe id="rd-preview" style="width:100%;height:640px;border:1px solid var(--outline-variant);border-radius:8px;background:#fff"></iframe>
+    <h3>预览</h3>
+    <iframe id="rd-preview" style="width:100%;height:640px;border:1px solid var(--outline-variant);border-radius:8px;background:#fff" title="报告本身为白底设计，故保留白色"></iframe>
   </div>
 </section>
 
 <!-- ───────── ⑤ 同步批注 ───────── -->
 <section class="panel" id="panel-sync">
-  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">同步批注</h1>
-  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
-    把 B 发回的 HTML 文件拖到下方区域 → 自动覆盖 <code class="font-code text-xs">data/reports/&lt;m&gt;/&lt;label&gt;.html</code> → 立即解析批注写回窗口。
-  </p>
+  <h1 class="text-3xl mb-8" style="font-weight:500;letter-spacing:-0.03em">同步批注</h1>
 
   <div class="card">
     <div class="field-row">
@@ -362,17 +457,13 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
     <h3>手动触发（不上传，只重扫现有 reports/ 目录）</h3>
     <div class="field-row">
       <button class="btn btn-outline" onclick="syncOnly()">↻ 重扫同步</button>
-      <span class="text-xs" style="color:var(--on-surface-variant)">用于 B 已通过其他方式覆盖了文件的情况</span>
     </div>
   </div>
 </section>
 
 <!-- ───────── ⑥ 批注收件 ───────── -->
 <section class="panel" id="panel-inbox">
-  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">批注收件</h1>
-  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
-    列出 <code class="font-code text-xs">data/reports/</code> 所有 HTML，对比 last_synced.json 标出"待同步"。
-  </p>
+  <h1 class="text-3xl mb-8" style="font-weight:500;letter-spacing:-0.03em">批注收件</h1>
 
   <div class="card">
     <div class="field-row">
@@ -395,11 +486,7 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
 
 <!-- ───────── ⑦ 池配置 ───────── -->
 <section class="panel" id="panel-pool">
-  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">池配置</h1>
-  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
-    编辑 <code class="font-code text-xs">config/pool_a.yaml / pool_us.yaml</code>。
-    <strong style="color:var(--error)">role 字段下拉锁定 enum</strong>（乱填会让 panel.cross_asset_state 算错）。
-  </p>
+  <h1 class="text-3xl mb-8" style="font-weight:500;letter-spacing:-0.03em">池配置</h1>
 
   <div class="card">
     <div class="field-row">
@@ -425,19 +512,12 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
 
 <!-- ───────── ⑧ 系统调参 ───────── -->
 <section class="panel" id="panel-system">
-  <h1 class="text-2xl mb-4" style="font-family:'STZhongsong','华文中宋',serif">系统调参</h1>
-  <p class="text-sm mb-6" style="color:var(--on-surface-variant)">
-    三级风险分区：
-    <span class="zone-tag zone-green">绿区</span>人格设定 自由改；
-    <span class="zone-tag zone-yellow">黄区</span>量化阈值 谨慎改；
-    <span class="zone-tag zone-orange">橙区</span>LLM 模板 需懂 schema。
-    因子公式 / classify 边界 / prompt 组装逻辑属于地基，<strong>不暴露</strong>到 GUI（CLAUDE.md 禁区）。
-  </p>
+  <h1 class="text-3xl mb-8" style="font-weight:500;letter-spacing:-0.03em">系统调参</h1>
 
   <div class="subtab-nav">
-    <button class="subtab-btn active" data-sub="personas">人格设定<span class="zone-tag zone-green">绿</span></button>
-    <button class="subtab-btn" data-sub="thresholds">量化阈值<span class="zone-tag zone-yellow">黄</span></button>
-    <button class="subtab-btn" data-sub="templates">LLM 模板<span class="zone-tag zone-orange">橙</span></button>
+    <button class="subtab-btn active" data-sub="personas">人格设定</button>
+    <button class="subtab-btn" data-sub="thresholds">量化阈值</button>
+    <button class="subtab-btn" data-sub="templates">LLM 模板</button>
   </div>
 
   <!-- 子面板 1：人格 -->
@@ -480,7 +560,7 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
         <button class="btn btn-danger btn-sm" onclick="resetTemplate()">⟲ 恢复默认</button>
         <span id="tp-status" class="text-sm" style="color:var(--on-surface-variant)"></span>
       </div>
-      <textarea id="tp-content" class="code-area" style="min-height:400px" placeholder="（选模板段后显示）"></textarea>
+      <textarea id="tp-content" class="code-area" style="min-height:400px" placeholder=""></textarea>
     </div>
   </div>
 </section>
@@ -488,7 +568,7 @@ textarea.code-area{font-family:'Cascadia Code','Consolas',monospace;font-size:13
 </main>
 
 <!-- 浮动日志/错误面板 -->
-<div id="logger-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;height:50vh;background:#fff;border-top:2px solid var(--primary);box-shadow:0 -4px 12px rgba(0,0,0,.1);z-index:90;overflow:hidden">
+<div id="logger-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;height:50vh;background:var(--card);border-top:2px solid var(--primary);box-shadow:0 -4px 12px rgba(0,0,0,.4);z-index:90;overflow:hidden">
   <div style="padding:8px 16px;background:var(--surface-container);border-bottom:1px solid var(--outline-variant);display:flex;align-items:center;gap:12px">
     <strong style="font-size:14px">📋 日志 / 错误</strong>
     <button class="tab-btn active" id="lg-tab-logs" onclick="switchLogger('logs')">数据更新日志</button>
@@ -950,7 +1030,7 @@ function renderPersonas() {
     html += `<h3 style="margin-top:16px">${mk} 股市场</h3>`;
     Object.entries(_personasCache[mk] || {}).forEach(([k, v]) => {
       html += `
-        <div style="background:#fff;border:1px solid var(--outline-variant);border-radius:8px;padding:12px;margin-bottom:8px">
+        <div style="background:var(--muted);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
           <div style="font-weight:600;font-size:14px;color:var(--primary);margin-bottom:8px">${escapeHtml(k)}</div>
           <div class="field-row"><label style="min-width:80px">显示名</label>
             <input type="text" value="${escapeHtml(v.display_name || "")}" data-mk="${mk}" data-pk="${k}" data-field="display_name" style="flex:1">
@@ -959,7 +1039,7 @@ function renderPersonas() {
             <input type="text" value="${escapeHtml(v.scope || "")}" data-mk="${mk}" data-pk="${k}" data-field="scope" style="flex:1">
           </div>
           <div class="field-row"><label style="min-width:80px">关注维度</label>
-            <textarea data-mk="${mk}" data-pk="${k}" data-field="focus_block" style="flex:1;min-height:60px">${escapeHtml(v.focus_block || "")}</textarea>
+            <textarea class="auto-grow" data-mk="${mk}" data-pk="${k}" data-field="focus_block" style="flex:1">${escapeHtml(v.focus_block || "")}</textarea>
           </div>
           <div class="text-xs" style="color:var(--on-surface-variant)">负责字段（只读）: ${(v.output_fields||[]).join(" / ")}</div>
         </div>`;
@@ -1096,6 +1176,33 @@ function copyLogContent() {
     () => toast("复制失败", "error")
   );
 }
+</script>
+<script src="/static/lib/dot-field.js"></script>
+<script>
+(function(){
+  const el = document.getElementById('dot-field-bg');
+  if (el && window.DotField) {
+    new DotField(el, {
+      gradientFrom: 'rgba(239, 68, 68, 0.45)',
+      gradientTo:   'rgba(143, 72, 47, 0.25)',
+      glowColor:    '#120F17',
+    });
+  }
+})();
+</script>
+<script>
+// dev livereload — 轮询 /__reload_check，mtime 变化即刷新
+(function(){
+  let last = null;
+  setInterval(async () => {
+    try {
+      const r = await fetch('/__reload_check', {cache:'no-store'});
+      const {mtime} = await r.json();
+      if (last === null) { last = mtime; return; }
+      if (mtime > last) location.reload();
+    } catch(e) {}
+  }, 800);
+})();
 </script>
 </body>
 </html>

@@ -19,6 +19,7 @@ env/
 
 # Claude 工作树 / 本地配置
 .claude/
+.firecrawl/
 
 # 运行时产物（每次跑都会重生成）
 data/window/pool_a.json
