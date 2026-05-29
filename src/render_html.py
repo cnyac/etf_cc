@@ -529,7 +529,7 @@ def render(market: Literal["A", "US"], label: str) -> str:
 
     out_dir = os.path.join(REPORTS_DIR, market.lower())
     os.makedirs(out_dir, exist_ok=True)
-    out_fp = os.path.join(out_dir, f"{label}.html")
+    out_fp = os.path.join(out_dir, f"{market.upper()}-{label}.html")
     tmp = out_fp + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(html)

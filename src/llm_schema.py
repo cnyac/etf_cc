@@ -12,7 +12,7 @@ from __future__ import annotations
 # ============ enum 白名单 ============
 
 # A 股
-ENUM_YANGJIA_STAGE = ["冰点", "试错", "发酵", "高潮", "退潮"]
+ENUM_YANGJIA_STAGE = ["酝酿强化", "情绪高潮", "期待", "幻想抵抗", "崩溃", "麻木"]
 ENUM_YANGJIA_INTENSITY = ["弱", "中", "强"]
 ENUM_LIQUIDITY_SIGNAL = ["主线合力", "局部脉冲", "弱合力", "无合力"]
 ENUM_CONTRARIAN_GRADE = ["高赔率", "中赔率", "低赔率", "陷阱区"]
@@ -74,9 +74,9 @@ def normalize_audit_rating(value):
     return AUDIT_RATING_ALIASES.get(value.strip())
 
 # 顶层 strategy_outlook（任务 3.4）
-ENUM_MARKET_PHASE = ["情绪修复", "趋势主升", "高位分歧", "阴跌抵抗", "其他"]
+ENUM_MARKET_PHASE = ["艳阳高照", "风暴来袭", "阴雨绵绵", "转折临界"]
 ENUM_TREND_FORECAST = ["上涨", "震荡", "下跌"]
-ENUM_STYLE_TONE = ["偏向进攻", "偏向防守", "混沌期"]
+ENUM_STYLE_TONE = ["全力拼取", "离场观望", "试错跟随"]
 
 # 跨资产维度名（panel.cross_asset_state 的 key）
 A_CROSS_ASSET_DIMS = ["treasury_10y", "treasury_30y", "gold", "oil"]
@@ -202,7 +202,7 @@ US_SCHEMA = {
 # 这些字段不属于任何单个人格，由 LLM 综合产出或多人格联合署名。
 
 # strategy_outlook：任务 3.4 七子项策略前瞻
-# 责任划分：6 子项养家定调，risk_points 由炒家专项
+# 责任划分：7 子项全部由养家定调（北炒废弃后 risk_points 并入养家）
 STRATEGY_OUTLOOK_SCHEMA = {
     "enums": {
         "market_phase": ENUM_MARKET_PHASE,
@@ -216,7 +216,7 @@ STRATEGY_OUTLOOK_SCHEMA = {
     "nullable": True,
 }
 
-# unique_anomaly_analysis：任务 2.3 独特异象追踪（炒家写）
+# unique_anomaly_analysis：任务 2.3 独特异象追踪（北炒废弃后归养家写）
 UNIQUE_ANOMALY_LEN = (200, None)   # 字数区间（下限 200，无上限，让 LLM 发挥）
 
 # macro_cycle_anchor：任务 4 周末宏观周期（仅周末必填）
@@ -255,8 +255,8 @@ def get_schema(market: str) -> dict:
 #   - is_skeleton: bool (Python backfill 时 True；LLM 写满后 False)
 #   - session_summary: str (~100 字，含风格判断 + 主线锚定 + 预期推演 + 风险提示)
 #   - ticker_analyses: {code: text}  每分类挑 1-2 个重点品种写 50-100 字点评
-#   - strategy_outlook: dict | null  任务 3.4 七子项（养家+炒家分工）
-#   - unique_anomaly_analysis: str | null  任务 2.3 独特异象（炒家写，无独特品种 → null）
+#   - strategy_outlook: dict | null  任务 3.4 七子项（北炒废弃后全归养家）
+#   - unique_anomaly_analysis: str | null  任务 2.3 独特异象（养家写，无独特品种 → null）
 #   - macro_cycle_anchor: dict | null  任务 4 周末宏观（非周末 → null）
 #   - ticker_audits: {code: {actual_vs_expected, auditor}}  少数 ticker 升级人格审
 TOP_LEVEL_REQUIRED = ["is_skeleton", "session_summary"]

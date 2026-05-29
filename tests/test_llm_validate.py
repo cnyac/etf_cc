@@ -166,7 +166,7 @@ def test_group_qualitative_valid_passes():
 # ---------- A 股 ----------
 
 VALID_YANGJIA = {
-    "stage": "试错",
+    "stage": "幻想抵抗",
     "intensity": "中",
     "evidence": "上涨 15/39，强势 1 个，缩量为主，跨资产黄金 down",
     "next_session_expect": "情绪修复或继续阴跌均可能",
@@ -492,7 +492,7 @@ _DEEP_OK = (
 
 def test_strategy_outlook_valid():
     so = {
-        "market_phase": "趋势主升", "trend_forecast": "上涨", "style_tone": "偏向进攻",
+        "market_phase": "艳阳高照", "trend_forecast": "上涨", "style_tone": "全力拼取",
         "attack_direction": "AI 算力 + 半导体设备",
         "retreat_direction": "传统消费 + 高位地产",
         "key_focus": ["证券板块是否补涨", "10 年期国债收益率"],
@@ -510,7 +510,7 @@ def test_strategy_outlook_valid():
 def test_strategy_outlook_deep_analysis_too_short():
     """deep_analysis 必填，且至少 400 字（#9 2026-05-22）。"""
     so = {
-        "market_phase": "趋势主升", "trend_forecast": "上涨", "style_tone": "偏向进攻",
+        "market_phase": "艳阳高照", "trend_forecast": "上涨", "style_tone": "全力拼取",
         "attack_direction": "x", "retreat_direction": "x",
         "key_focus": ["a"], "risk_points": ["b"],
         "deep_analysis": "太短了" * 5,  # < 400 字
@@ -526,7 +526,7 @@ def test_strategy_outlook_deep_analysis_too_short():
 
 def test_strategy_outlook_bad_enum():
     so = {
-        "market_phase": "牛市顶", "trend_forecast": "上涨", "style_tone": "偏向进攻",
+        "market_phase": "牛市顶", "trend_forecast": "上涨", "style_tone": "全力拼取",
         "attack_direction": "x", "retreat_direction": "x",
         "key_focus": ["a"], "risk_points": ["b"],
         "deep_analysis": _DEEP_OK,

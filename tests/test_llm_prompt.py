@@ -76,7 +76,7 @@ def test_build_prompt_contains_sections_a():
     # 含当前 panel
     assert "up_count" in p
     # 含 schema enum 白名单
-    assert "冰点" in p   # ENUM_YANGJIA_STAGE
+    assert "酝酿强化" in p   # ENUM_YANGJIA_STAGE
     # 含任务说明
     assert "2026-05-20-收" in p
 
@@ -123,7 +123,7 @@ def test_prompt_includes_audit_context_when_prev_has_expect():
     history = [{"label": "2026-05-19-收", "narrative": {
         "is_skeleton": False, "session_summary": "x",
         "yangjia_emotion_cycle": {
-            "stage": "高潮", "intensity": "强", "evidence": "x",
+            "stage": "情绪高潮", "intensity": "强", "evidence": "x",
             "next_session_expect": "情绪退潮但仍存余温",
             "what_kills_this_view": "y", "free_analysis": "z",
         },
