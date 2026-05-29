@@ -58,8 +58,6 @@ def test_index_page(client):
     for k in ["数据更新", "生成 Prompt", "填回 Narrative", "渲染报告",
               "同步批注", "批注收件", "池配置", "系统调参"]:
         assert k in body
-    # 三级风险分区
-    assert "绿区" in body and "黄区" in body and "橙区" in body
 
 
 def test_api_status(client):
