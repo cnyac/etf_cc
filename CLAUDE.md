@@ -41,7 +41,13 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 
 # 项目当前状态（重要）
 
-**2026-05-22 阶段 1-8 全部上线 + 多轮实测反馈修复完成**。
+**2026-05-29 养家样板（人格 → JSON 打通）上线**；2026-05-22 阶段 1-8 全部上线。
+
+**2026-05-29 关键变更**：
+- **北京炒家人格废弃**，职责并入养家：整个 `strategy_outlook`（含 risk_points）/ `unique_anomaly_analysis` / 周末 `macro_cycle_anchor` 独署 / `trading_discipline_review` 逐候选纪律审托管。`trading_discipline_review` schema 字段、校验、降级机制**全部保留不动**，仅废弃人格描述条目。
+- **新增灵魂层 + 绑定层文档**：养家心法见 `config/炒股养家影子分身：全动态大局观监控插件.md`（灵魂，一字不改）；其 5 段输出如何落到 JSON 字段见 `config/养家·装载契约.md`（翻译层），团队导读见 `docs/养家·装载契约·导读.md`。personas.yaml 养家条目加了 `skill_ref` 指向灵魂文档。工作流：先发这两份文档 → 再发 `gen_prompt` 输出。
+- **3 组 A 股 enum 改为养家母语**（突破"不改 enum"铁律，用户明确授权）：`stage`=酝酿强化/情绪高潮/期待/幻想抵抗/崩溃/麻木；`market_phase`=艳阳高照/风暴来袭/阴雨绵绵/转折临界；`style_tone`=全力拼取/离场观望/试错跟随。
+- 防漂移守护 `tests/test_loadout_contract.py`（契约↔schema↔personas.yaml 三处一致）。测试 332 passed。
 
 | 阶段 | 工作 | 状态 |
 |---|---|---|
@@ -96,7 +102,7 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 | 池子 | 42 ETF + 跨资产代表 → pool_a.yaml | 45 个股/ETF → pool_us.yaml |
 | 时段 | 午（11:35）+ 收（15:05） | 仅收盘（次日 5:30 拉数） |
 | max_sessions | 40（20 天 × 2） | 20（20 天 × 1） |
-| 人格字段数 | 4（养家/赵老哥/冯柳/纪律） | 5（德鲁肯米勒/米奈尔维尼/威科夫/温斯顿/纪律共用） |
+| 人格字段数 | 3 人格 + 纪律字段（养家/赵老哥/冯柳；北炒废弃后纪律审由养家托管） | 5（德鲁肯米勒/米奈尔维尼/威科夫/温斯顿/纪律共用） |
 | cross_asset 维度 | 4（10年/30年国债 + 黄金 + 油） | 8（10/30年 + 美元 + 黄金 + 油 + VIX + BTC + ETH） |
 
 ## 数据流水线

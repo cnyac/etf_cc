@@ -121,9 +121,9 @@ A 股引擎（4 字段）：
 | 养家 | 情绪周期 enum | + `panorama_text` 150-400 字 ≥3 段全景图 / `cross_validation_text` 跨板块联动 / `strategy_outlook` 6 子项策略定调 |
 | 赵老哥 | 上涨向流动性 | + `key_movers` ≥2 条上涨向板块异动解读 [{sector, phenomenon, motive, scenario}] |
 | 冯柳 | 下跌向逆向赔率 | + `key_movers` ≥2 条下跌向板块异动解读 |
-| 炒家（纪律） | 跨日候选纪律审查 | + `unique_anomaly_analysis` 独特异象追踪 / `strategy_outlook.risk_points` 风险点专项 / 周末 `macro_cycle_anchor` 联合署名 |
+| ~~炒家（纪律）~~→并入养家 | 跨日候选纪律审查 | + `unique_anomaly_analysis` 独特异象追踪 / `strategy_outlook.risk_points` 风险点专项 / 周末 `macro_cycle_anchor` 署名（**2026-05-29 北京炒家人格废弃，以上职责并入养家**；`trading_discipline_review` schema 字段保留不动）|
 
-新顶层 enum：`strategy_outlook` 含 `market_phase`（情绪修复/趋势主升/高位分歧/阴跌抵抗/其他）、`trend_forecast`（上涨/震荡/下跌）、`style_tone`（偏向进攻/偏向防守/混沌期）。
+新顶层 enum：`strategy_outlook` 含 `market_phase`（艳阳高照/风暴来袭/阴雨绵绵/转折临界）、`trend_forecast`（上涨/震荡/下跌）、`style_tone`（全力拼取/离场观望/试错跟随）。〔2026-05-29 养家样板：market_phase / style_tone 改为养家母语，详见 `config/养家·装载契约.md`〕
 
 **预期审计的双轨设计（2026-05-21）**：
 

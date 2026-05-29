@@ -1,8 +1,8 @@
 # etf_cc — A 股 + 美股量价分析自动化
 
-> **状态**：2026-05-22 阶段 1-8 全部上线 + 多轮实测反馈修复完成。
+> **状态**：2026-05-29 养家样板（人格灵魂层 + 装载契约 + enum 重塑）上线；2026-05-22 阶段 1-8 全部上线。
 >
-> Git: https://github.com/cnyac/etf_cc · main · 200/200 测试通过
+> Git: https://github.com/cnyac/etf_cc · main · 332 测试通过
 
 > 🆕 **新会话冷启动**：按 §一"AI 阅读版"的顺序读 4 个文档（README → CLAUDE → DESIGN → REFACTOR_BRIEF），然后 `git log --oneline -5` 看最近做了什么 + `python -m pytest tests/` 验证环境。5 分钟上手。
 
@@ -48,7 +48,13 @@ A 股看 42 只 ETF 池，美股看 45 只权重股/ETF 池。每日产出独立
 | 7 | 端到端联调（A 股 + 美股都跑过真实 LLM narrative） | ✅ |
 | 8 | Flask GUI 控制台（`src/gui/` 8 tab 含三级风险调参）+ 多轮实测修复 | ✅ |
 
-**测试覆盖**：200/200 passed（tests/ 17 个文件）
+**测试覆盖**：332 passed（tests/ 18 个文件）
+
+**2026-05-29 养家样板**（人格 → JSON 打通）：
+- 北京炒家人格**废弃**，职责并入养家（strategy_outlook 全 7 项 / unique_anomaly_analysis / 周末 macro 独署 / trading_discipline_review 托管）。`trading_discipline_review` schema 字段保留不动。
+- 新增**灵魂层**文档 `config/炒股养家影子分身：全动态大局观监控插件.md` + **绑定层**文档 `config/养家·装载契约.md`（附 `docs/养家·装载契约·导读.md` 团队导读）。工作流：先发这两份文档 → 再发 `gen_prompt` 输出。
+- 3 组 enum 改为养家母语（A 股）：`stage`=酝酿强化/情绪高潮/期待/幻想抵抗/崩溃/麻木；`market_phase`=艳阳高照/风暴来袭/阴雨绵绵/转折临界；`style_tone`=全力拼取/离场观望/试错跟随。
+- 防漂移守护 `tests/test_loadout_contract.py`。
 
 **新增字段** (2026-05-22)：
 - `druckenmiller_macro_check.cross_asset_panorama` (≥150 字 无上限 跨资产全景)
@@ -418,7 +424,7 @@ python -m src.gen_prompt --market A --label 2026-05-20-收 > prompt.txt
   "is_skeleton": false,
   "session_summary": "今日 A 股呈现典型分化：上涨 15/39（占比 38.5%）……",
   "yangjia_emotion_cycle": {
-    "stage": "试错", "intensity": "中",
+    "stage": "幻想抵抗", "intensity": "中",
     "evidence": "上涨 15/39，强势仅 1 个，缩量主导",
     "next_session_expect": "明日早盘若仍无放量主线 → 情绪继续退潮",
     "what_kills_this_view": "明日早盘 ≥5 只强势 ETF 涨幅 >2%",
@@ -449,9 +455,9 @@ python -m src.gen_prompt --market A --label 2026-05-20-收 > prompt.txt
     "..."
   ],
   "strategy_outlook": {
-    "market_phase": "高位分歧",
+    "market_phase": "阴雨绵绵",
     "trend_forecast": "震荡",
-    "style_tone": "偏向防守",
+    "style_tone": "离场观望",
     "attack_direction": "弱合力，无明确主攻",
     "retreat_direction": "高位题材资金撤出",
     "key_focus": ["明日券商是否补涨", "10Y 国债收益率"],
